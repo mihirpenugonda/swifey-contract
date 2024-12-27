@@ -6,11 +6,17 @@ declare_id!("tUkgCLXftGcKozmxWY6UuiED9hMsow9HuimVUPjNtZS");
 pub mod swifey {
     use super::*;
 
-    pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
-        msg!("Greetings from: {:?}", ctx.program_id);
-        Ok(())
+    pub fn launch_token<'info>(ctx: Context<'_, '_, '_, 'info, LaunchToken<'info>>,
+        name: String,
+        symbol: String,
+        uri: String,
+        mint_authority: Pubkey,
+    ) -> Result<()> {
+        ctx.accounts.process(name, symbol, uri, mint_authority)
     }
 }
 
 #[derive(Accounts)]
-pub struct Initialize {}
+pub struct Initialize {
+    
+}
