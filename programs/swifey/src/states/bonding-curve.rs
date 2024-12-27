@@ -38,7 +38,7 @@ impl<'info> BondingCurve<'info> {
         let fee_amount = (amount_in as f64 * fee_percentage / 100.0) as u64;
         let amount_after_fee = amount_in.checked_sub(fee_amount).ok_or(Error::InsufficientFunds)?;
 
-        let amount_in_u129 = amount_after_fee as u128;
+        let amount_in_u128 = amount_after_fee as u128;
         let virtual_sol = self.virtual_sol_reserve as u128;
         let virtual_token = self.virtual_token_reserve as u128;
 
@@ -52,7 +52,7 @@ impl<'info> BondingCurve<'info> {
 
             let sol_ratio = (virtual_sol * PRECISION).checked_div(virtual_sol.checked_add(amount_in_u128).ok_or(Error::InvalidReserves)?).ok_or(Error::InvalidReserves)?;
 
-            let power = (sol_ration as f64 / PRECISION as f64).powf(WEIGHT as f64 / PRECISION as f64);
+            let power = (sol_ratio as f64 / PRECISION as f64).powf(WEIGHT as f64 / PRECISION as f64);
             let tokens_out = ((1.0 - power) * virtual_token as f64) as u128;
 
 
@@ -68,7 +68,7 @@ impl<'info> BondingCurve<'info> {
 
             let token_ratio = (virtual_token * PRECISION).checked_div(virtual_token.checked_add(amount_in_u128).ok_or(Error::InvalidReserves)?).ok_or(Error::InvalidReserves)?;
 
-            let power = (token_ration as f64 / PRECISION as f64).powf(PRECISION as f64 / WEIGHT as f64);
+            let power = (token_ratio as f64 / PRECISION as f64).powf(PRECISION as f64 / WEIGHT as f64);
             let sol_out = ((1.0 - power) * virtual_sol as f64) as u128;
 
             if sol_out > virtual_sol {
@@ -87,6 +87,6 @@ impl<'info> BondingCurve<'info> {
             final_amount
         };
 
-        OK((adjusted_amount, fee_lamports))
+        Ok((adjusted_amount, fee_amount))
     }
 }
