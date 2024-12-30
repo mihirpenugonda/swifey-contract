@@ -1,12 +1,12 @@
 use crate::{
-    consts::TOKEN_DECIMAL,
+    constants::TOKEN_DECIMAL,
     states::{BondingCurve, Config}
 };
 
-use anchor_lang::{prelude::*, solana_program::sysvar::SysvarId, system_program};
+use anchor_lang::{prelude::*, system_program, solana_program::sysvar};
 
 use anchor_spl::{
-    associate_token::{self, AssociatedToken},
+    associated_token::{self, AssociatedToken},
     metadata::{self, mpl_token_metadata::types::DataV2, Metadata},
     token::{self, spl_token::instruction::AuthorityType, Mint, Token, TokenAccount}
 };
@@ -34,7 +34,7 @@ pub struct Launch<'info>{
         init, 
         payer = creator,
         space = 8 + BondingCurve::LEN,
-        seeds = [BondingCurve::SEED_PREFIX.as_bytes(), token_mint.key().to_bytes()],
+        seeds = [BondingCurve::SEED_PREFIX.as_bytes(), &token_mint.key().to_bytes()],
         bump
     )]
     bonding_curve: Box<Account<'info, BondingCurve>>,
@@ -78,11 +78,11 @@ impl<'info> Launch<'info> {
         let global_config = &self.global_config;
 
         // init bonding curve pda
-        bonding_curve.virtual_token_reserves = global_config.initial_virtual_token_reserve;
-        bonding_curve.virtual_sol_reserves = global_config.initial_virtual_sol_reserve;
-        bonding_curve.real_token_reserves = global_config.initial_real_token_reserve;
-        bonding_curve.real_sol_reserves = 0;
-        bonding_curve.token_total_supply = global_config.token_total_supply;
+        bonding_curve.virtual_token_reserve = global_config.initial_virtual_token_reserve;
+        bonding_curve.virtual_sol_reserve = global_config.initial_virtual_sol_reserve;
+        bonding_curve.real_token_reserve = global_config.initial_real_token_reserve;
+        bonding_curve.real_sol_reserve = 0;
+        bonding_curve.token_total_supply = global_config.total_token_supply;
         bonding_curve.is_completed = false;
 
         let signer_seeds: &[&[&[u8]]] = &[&[Config::SEED_PREFIX.as_bytes(), &[bump_config]]];
@@ -98,7 +98,7 @@ impl<'info> Launch<'info> {
                 },
                 signer_seeds,
             ),
-            global_config.token_total_supply,
+            global_config.total_token_supply,
         )?;
 
         //  create metadata

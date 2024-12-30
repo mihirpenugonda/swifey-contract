@@ -14,6 +14,12 @@ pub enum SwifeyError {
     #[msg("Amount out is smaller than required amount")]
     InsufficientAmountOut,
 
+    #[msg("Insufficient funds")]
+    InsufficientFunds,
+
+    #[msg("Incorrect fee recipient")]
+    IncorrectFeeRecipient,
+
     #[msg("An overflow or underflow occurred during calculation")]
     InvalidReserves,
 

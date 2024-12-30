@@ -1,22 +1,33 @@
 use anchor_lang::prelude::*;
 
+pub mod constants;
+pub mod errors;
+pub mod instructions;
+pub mod states;
+pub mod utils;
+
+use crate::instructions::*;
+
 declare_id!("tUkgCLXftGcKozmxWY6UuiED9hMsow9HuimVUPjNtZS");
 
 #[program]
 pub mod swifey {
     use super::*;
 
-    pub fn launch_token<'info>(ctx: Context<'_, '_, '_, 'info, LaunchToken<'info>>,
+    pub fn configure(ctx: Context<Configure>, new_config: states::Config) -> Result<()> {
+        ctx.accounts.process(new_config)
+    }
+
+    pub fn launch<'info>(ctx: Context<'_, '_, '_, 'info, Launch<'info>>,
         name: String,
         symbol: String,
-        uri: String,
-        mint_authority: Pubkey,
+        uri: String
     ) -> Result<()> {
-        ctx.accounts.process(name, symbol, uri, mint_authority)
+        ctx.accounts.process(name, symbol, uri, ctx.bumps.global_config)
     }
-}
 
-#[derive(Accounts)]
-pub struct Initialize {
-    
+    pub fn swap<'info>(ctx: Context<'_, '_, '_, 'info, Swap<'info>>, amount: u64, direction: u8, min_out: u64) -> Result<()> {
+        ctx.accounts.process(amount, direction, min_out, ctx.bumps.bonding_curve)
+    }
+
 }

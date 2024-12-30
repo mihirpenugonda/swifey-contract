@@ -24,7 +24,7 @@ pub struct BondingCurve {
     pub is_completed: bool,
 }
 
-impl<'info> BondingCurve<'info> {
+impl<'info> BondingCurve {
     pub const SEED_PREFIX: &'static str = "bonding-curve";
     pub const LEN: usize = 8 * 5 + 1;
 
@@ -81,6 +81,7 @@ impl<'info> BondingCurve<'info> {
             user_ata,
             token_program,
             &[&BondingCurve::get_signer(&token_mint.key(), &curve_bump)],
+            amount_out,
         )?;
 
         // Calculate new reserves
@@ -104,7 +105,7 @@ impl<'info> BondingCurve<'info> {
         self.update_reserves(new_sol_reserves, new_token_reserves)?;
         
         //Return true if curve reached its limit
-        if (new_sol_reserves >= curve_limit) {
+        if new_sol_reserves >= curve_limit {
             self.is_completed = true;
             return Ok(true);
         }
@@ -122,7 +123,7 @@ impl<'info> BondingCurve<'info> {
         user_ata: &mut AccountInfo<'info>, // Associated token account for user
         fee_recipient: &mut AccountInfo<'info>, // Team wallet address to get fees  
         curve_ata: &mut AccountInfo<'info>, // Associated token account for bonding curve
-        amount_in: u64, /// SOL Amount to pay
+        amount_in: u64, // SOL Amount to pay
         min_amount_out: u64, // Minimum amount out 
         fee_percentage: f64, // Selling fee percentage
         curve_bump: u8, // Bump for the bonding curve PDA
@@ -168,7 +169,7 @@ impl<'info> BondingCurve<'info> {
 
         let new_sol_reserves = self
             .virtual_sol_reserve
-            .checked_sub(amount_out + fee_lamports)
+            .checked_sub(amount_out + fee_amount)
             .ok_or(SwifeyError::InvalidReserves)?;
 
         msg!(
@@ -180,7 +181,7 @@ impl<'info> BondingCurve<'info> {
         // Update reserves on the curve
         self.update_reserves(new_sol_reserves, new_token_reserves)?;
 
-        Ok(true)
+        Ok(())
     }
 
     //Calculate adjusted amount out and fee amount
@@ -196,8 +197,8 @@ impl<'info> BondingCurve<'info> {
             .checked_sub(fee_amount)
             .ok_or(SwifeyError::InsufficientFunds)?;
 
-        let virtual_sol = self.virtual_sol_reserve as u128;
-        let virtual_token = self.virtual_token_reserve as u128;
+        let virtual_sol = self.virtual_sol_reserve as u64;
+        let virtual_token = self.virtual_token_reserve as u64;
 
         const WEIGHT: u128 = 500_000;
 

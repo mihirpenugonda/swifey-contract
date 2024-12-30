@@ -34,7 +34,7 @@ pub fn sol_transfer_with_signer<'info>(
     signer_seeds: &[&[&[u8]]],
     amount: u64,
 ) -> Result<()> {
-    let tx = tranfer(source.key, destination.key, amount);
+    let tx = transfer(source.key, destination.key, amount);
     invoke_signed(
         &tx,
         &[

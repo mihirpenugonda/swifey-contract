@@ -1,4 +1,4 @@
-pub mod conig;
+pub mod config;
 pub use config::*;
 
 pub mod bonding_curve;
