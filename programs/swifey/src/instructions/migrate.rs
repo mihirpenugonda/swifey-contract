@@ -1,11 +1,9 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{Token, TokenAccount, Mint};
-use raydium_amm_v3::state::AMM;
-
 use crate::states::{BondingCurve, Config};
 use crate::errors::SwifeyError;
 use crate::utils::{token_transfer_with_signer, sol_transfer_with_signer};
-
+use raydium_amm_v3::states::PoolState;
 
 #[derive(Accounts)]
 pub struct Migrate<'info> {
@@ -41,16 +39,16 @@ pub struct Migrate<'info> {
     /// CHECK: Native SOL account owned by bonding curve
     #[account(
         mut,
-        constraint = curve_sol_account.owner == bonding_curve.key(),
+        constraint = *curve_sol_account.owner == bonding_curve.key(),
         constraint = curve_sol_account.lamports() > 0 @ SwifeyError::InsufficientSolBalance,
     )]
     pub curve_sol_account: AccountInfo<'info>,
 
     #[account(
         mut,
-        constraint = raydium_pool.owner == &raydium_amm_v3::ID @ SwifeyError::InvalidPoolOwner,
+        constraint = raydium_pool.to_account_info().owner == &raydium_amm_v3::ID @ SwifeyError::InvalidPoolOwner,
     )]
-    pub raydium_pool: Account<'info, AMM>,
+    pub raydium_pool: AccountLoader<'info, PoolState>,
 
     /// CHECK: Fee recipient account
     #[account(mut)]
@@ -80,21 +78,23 @@ impl<'info> Migrate<'info> {
 
         // Verify Raydium pool state
         require!(
-            raydium_pool.state == raydium_amm_v3::state::PoolState::Initialized,
+            raydium_pool.load()?.get_status_by_bit(raydium_amm_v3::states::PoolStatusBitIndex::Swap),
             SwifeyError::InvalidPoolState
         );
 
         // Verify pool tokens match
         require!(
-            raydium_pool.token_mint_0 == ctx.accounts.token_mint.key() || 
-            raydium_pool.token_mint_1 == ctx.accounts.token_mint.key(),
+            raydium_pool.load()?.token_mint_0 == ctx.accounts.token_mint.key() || 
+            raydium_pool.load()?.token_mint_1 == ctx.accounts.token_mint.key(),
             SwifeyError::InvalidPoolTokens
         );
     
         // Get signer seeds for PDA operations
+        let bump = ctx.bumps.bonding_curve;
+        let token_key = ctx.accounts.token_mint.key();
         let seeds = BondingCurve::get_signer(
-            &ctx.accounts.token_mint.key(),
-            &ctx.bumps.bonding_curve
+            &token_key,
+            &bump
         );
         let signer_seeds = &[&seeds[..]];
     

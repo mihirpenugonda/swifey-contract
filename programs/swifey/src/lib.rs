@@ -34,7 +34,7 @@ mod swifey {
         ctx: Context<Migrate>,
         params: instructions::MigrateParams
     ) -> Result<()> {
-        ctx.accounts.process(params)
+        Migrate::process(ctx, params)
     }
-    
+
 }
