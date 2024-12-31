@@ -11,7 +11,7 @@ use crate::instructions::*;
 declare_id!("tUkgCLXftGcKozmxWY6UuiED9hMsow9HuimVUPjNtZS");
 
 #[program]
-pub mod swifey {
+mod swifey {
     use super::*;
 
     pub fn configure(ctx: Context<Configure>, new_config: states::Config) -> Result<()> {
@@ -30,4 +30,11 @@ pub mod swifey {
         ctx.accounts.process(amount, direction, min_out, ctx.bumps.bonding_curve)
     }
 
+    pub fn migrate(
+        ctx: Context<Migrate>,
+        params: instructions::MigrateParams
+    ) -> Result<()> {
+        ctx.accounts.process(params)
+    }
+    
 }

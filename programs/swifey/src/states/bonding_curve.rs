@@ -22,11 +22,14 @@ pub struct BondingCurve {
 
     //Is the curve completed
     pub is_completed: bool,
+
+    // New field to track if funds are migrated to Raydium
+    pub is_migrated: bool,
 }
 
 impl<'info> BondingCurve {
-    pub const SEED_PREFIX: &'static str = "bonding-curve";
-    pub const LEN: usize = 8 * 5 + 1;
+    pub const SEED_PREFIX: &'static str = "bonding_curve";
+    pub const LEN: usize = 8 * 5 + 1 + 1;
 
     //Get signer for bonding curve PDA
     pub fn get_signer<'a>(mint: &'a Pubkey, bump: &'a u8) -> [&'a [u8]; 3] {
@@ -197,33 +200,47 @@ impl<'info> BondingCurve {
             .checked_sub(fee_amount)
             .ok_or(SwifeyError::InsufficientFunds)?;
 
-        let virtual_sol = self.virtual_sol_reserve as u64;
-        let virtual_token = self.virtual_token_reserve as u64;
+        // Convert to u128 for larger number handling
+        let virtual_sol = self.virtual_sol_reserve as u128;
+        let virtual_token = self.virtual_token_reserve as u128;
+        let amount_after_fee = amount_after_fee as u128;
 
-        const WEIGHT: u128 = 500_000;
+        // Calculate dynamic reserve ratio based on current reserves
+        let reserve_ratio = if virtual_sol > 0 {
+            virtual_token
+                .checked_mul(1_000_000)  // Scale for precision (PPM)
+                .and_then(|r| r.checked_div(virtual_sol))
+                .ok_or(SwifeyError::InvalidReserves)?
+        } else {
+            return Err(SwifeyError::InvalidReserves.into());
+        };
+
+        println!("Dynamic reserve ratio: {}", reserve_ratio);
 
         let amount_out = if direction == 0 {
-            if virtual_sol == 0 || virtual_token == 0 {
-                return Err(SwifeyError::InvalidReserves.into());
-            }
-
-            let tokens_out = virtual_token.checked_mul(((1 + amount_after_fee / virtual_sol).pow(WEIGHT as u32) - 1).try_into().unwrap_or(0)).ok_or(SwifeyError::InvalidReserves)?;
+            // Buy tokens
+            let tokens_out = amount_after_fee
+                .checked_mul(virtual_token)
+                .and_then(|r| r.checked_mul(reserve_ratio))
+                .and_then(|r| r.checked_div(1_000_000)) // Remove PPM scaling
+                .and_then(|r| r.checked_div(virtual_sol))
+                .ok_or(SwifeyError::InvalidReserves)?;
 
             tokens_out
-
         } else {
-            if virtual_sol == 0 || virtual_token == 0 {
-                return Err(SwifeyError::InvalidReserves.into());
-            }
-
-            let sol_out = virtual_sol.checked_mul(((1 + amount_after_fee / virtual_token).pow(WEIGHT as u32) - 1).try_into().unwrap_or(0)).ok_or(SwifeyError::InvalidReserves)?;
+            // Sell tokens
+            let sol_out = amount_after_fee
+                .checked_mul(virtual_sol)
+                .and_then(|r| r.checked_mul(reserve_ratio))
+                .and_then(|r| r.checked_div(1_000_000)) // Remove PPM scaling
+                .and_then(|r| r.checked_div(virtual_token))
+                .ok_or(SwifeyError::InvalidReserves)?;
 
             sol_out
         };
 
         let final_amount = u64::try_from(amount_out).map_err(|_| SwifeyError::IncorrectValueRange)?;
-
-        require!(final_amount > 0, SwifeyError::InsufficientAmountOut);
+        println!("Calculated amount out: {}", final_amount);
 
         let adjusted_amount = if direction == 0 {
             final_amount

@@ -28,4 +28,28 @@ pub enum SwifeyError {
 
     #[msg("Curve is not completed")]
     CurveNotCompleted,
+
+    #[msg("Already migrated to Raydium")]
+    AlreadyMigrated,
+
+    #[msg("Mathematical operation overflow")]
+    MathOverflow,
+
+    #[msg("Insufficient SOL balance")]
+    InsufficientSolBalance,
+
+    #[msg("Insufficient token balance")]
+    InsufficientTokenBalance,
+
+    #[msg("Invalid pool owner")]
+    InvalidPoolOwner,
+
+    #[msg("Invalid pool state")]
+    InvalidPoolState,
+
+    #[msg("Invalid pool tokens")]
+    InvalidPoolTokens,
+
+    #[msg("Slippage tolerance exceeded")]
+    SlippageExceeded,
 }

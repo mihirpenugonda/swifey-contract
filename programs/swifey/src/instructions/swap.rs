@@ -18,6 +18,7 @@ pub struct Swap<'info> {
     #[account(seeds = [Config::SEED_PREFIX.as_bytes()], bump)]
     global_config: Box<Account<'info, Config>>,
 
+    /// CHECK: This account is verified by through the global config constraint
     #[account(mut, constraint = global_config.fee_recipient == fee_recipient.key() @SwifeyError::IncorrectFeeRecipient)]
     fee_recipient: AccountInfo<'info>,
 

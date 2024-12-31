@@ -46,7 +46,8 @@ pub struct Launch<'info>{
         associated_token::authority = bonding_curve,
     )]
     curve_token_account: Box<Account<'info, TokenAccount>>,
-
+    
+    /// CHECK: Initialized by token metadata program
     #[account(mut)]
     token_metadata_account: UncheckedAccount<'info>,
 
