@@ -8,7 +8,7 @@ pub mod utils;
 
 use crate::instructions::*;
 
-declare_id!("tUkgCLXftGcKozmxWY6UuiED9hMsow9HuimVUPjNtZS");
+declare_id!("DRHbVragqmDceUKDRPdu8ogSZbNFAbcherr3PZ2CZ8Nt");
 
 #[program]
 mod swifey {

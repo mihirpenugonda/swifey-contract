@@ -10,7 +10,8 @@ import { Idl } from "@coral-xyz/anchor";
 import { 
     TOKEN_PROGRAM_ID, 
     ASSOCIATED_TOKEN_PROGRAM_ID,
-    getAssociatedTokenAddress 
+    getAssociatedTokenAddress,
+    getAccount
 } from "@solana/spl-token";
 
 const METADATA_PROGRAM_ID = new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s");
@@ -33,6 +34,16 @@ export type ConfigureParams = {
     sellFeePercentage: number;
     migrationFeePercentage: number;
 };
+
+export interface LaunchedToken {
+  tokenMint: PublicKey;
+  virtualTokenReserve: anchor.BN;
+  virtualSolReserve: anchor.BN;
+  realTokenReserve: anchor.BN;
+  realSolReserve: anchor.BN;
+  tokenTotalSupply: anchor.BN;
+  isCompleted: boolean;
+}
 
 export const useSwifey = () => {
     const { connection } = useConnection();
@@ -158,7 +169,7 @@ export const useSwifey = () => {
     const swap = useCallback(async (
         tokenMint: PublicKey,
         amount: anchor.BN,
-        direction: number,  // 0 for buy, 1 for sell
+        direction: number,
         minOut: anchor.BN
     ) => {
         if (!program || !publicKey) throw new Error("Program not initialized");
@@ -168,16 +179,30 @@ export const useSwifey = () => {
             program.programId
         );
 
+        console.log("Swap attempt:", {
+            mint: tokenMint.toString(),
+            bondingCurvePda: bondingCurvePda.toString(),
+            amount: amount.toString(),
+            direction
+        });
+
+        // Add account existence check
+        const bondingCurveAccount = await connection.getAccountInfo(bondingCurvePda);
+        if (!bondingCurveAccount) {
+            throw new Error("Bonding curve not initialized for this token");
+        }
+
+
         const [configPda] = PublicKey.findProgramAddressSync(
             [Buffer.from("global_config")],
             program.programId
         );
 
-        const [feeRecipientPda] = PublicKey.findProgramAddressSync(
-            [Buffer.from("fee_recipient")],
-            program.programId
-        );
+        const config = await program.account.config.fetch(configPda);
+        console.log("Config:", config);
+        const feeRecipientPda = config.feeRecipient;
 
+        // Get or create token accounts
         const curveTokenAccount = await getAssociatedTokenAddress(
             tokenMint,
             bondingCurvePda,
@@ -198,7 +223,7 @@ export const useSwifey = () => {
             .accounts({
                 user: publicKey,
                 globalConfig: configPda,
-                feeRecipient: feeRecipientPda,
+                feeRecipient: feeRecipientPda as PublicKey,
                 bondingCurve: bondingCurvePda,
                 tokenMint: tokenMint,
                 curveTokenAccount: curveTokenAccount,
@@ -220,19 +245,125 @@ export const useSwifey = () => {
             preflightCommitment: 'processed',
         });
 
-        await connection.confirmTransaction({
-            signature: signed,
-            blockhash: latestBlockhash.blockhash,
-            lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
-        });
+        // Simple delay to allow transaction to process
+        await new Promise(resolve => setTimeout(resolve, 5000));
         
         return signed;
     }, [program, publicKey, connection, sendTransaction]);
+
+    const getLaunchedTokens = useCallback(async () => {
+        if (!program || !publicKey) throw new Error("Program not initialized");
+
+        // Get config account
+        const [configPda] = anchor.web3.PublicKey.findProgramAddressSync(
+            [Buffer.from("global_config")],
+            program.programId
+        );
+
+        // Get recent signatures for the program
+        const signatures = await connection.getSignaturesForAddress(
+            program.programId,
+            { limit: 1000 }
+        );
+
+        const tokens = new Set<string>();
+        const launchedTokens: LaunchedToken[] = [];
+
+        // Process each transaction to find launch instructions
+        for (const sig of signatures) {
+            try {
+                const tx = await connection.getParsedTransaction(sig.signature, {
+                    maxSupportedTransactionVersion: 0
+                });
+
+                // Skip if transaction not found or failed
+                if (!tx || !tx.meta || tx.meta.err) continue;
+
+                // Look for launch instruction in the transaction
+                const launchInstr = tx.transaction.message.instructions.find(
+                    ix => ix.programId.equals(program.programId)
+                );
+
+                if (launchInstr && 'accounts' in launchInstr) {
+                    const tokenMint = launchInstr.accounts[2];
+                    
+                    // Skip if we've already processed this token
+                    if (tokens.has(tokenMint.toString())) continue;
+                    
+                    try {
+                        const bondingCurvePda = PublicKey.findProgramAddressSync(
+                            [Buffer.from("bonding_curve"), tokenMint.toBuffer()],
+                            program.programId
+                        )[0];
+
+                        // Add account existence check
+                        const accountInfo = await connection.getAccountInfo(bondingCurvePda);
+                        if (accountInfo) {  // Only process if account exists
+                            const bondingCurve = await program.account.bondingCurve.fetch(bondingCurvePda);
+                            tokens.add(tokenMint.toString());
+                            launchedTokens.push({
+                                tokenMint,
+                                virtualTokenReserve: bondingCurve.virtualTokenReserve,
+                                virtualSolReserve: bondingCurve.virtualSolReserve,
+                                realTokenReserve: bondingCurve.realTokenReserve,
+                                realSolReserve: bondingCurve.realSolReserve,
+                                tokenTotalSupply: bondingCurve.tokenTotalSupply,
+                                isCompleted: Boolean(bondingCurve.isCompleted)
+                            });
+                            console.log("Launched token:", launchedTokens[launchedTokens.length - 1]);
+                        }
+                    } catch (e) {
+                        console.error('Error fetching bonding curve:', e);
+                    }
+                }
+            } catch (e) {
+                console.error('Error processing transaction:', e);
+                continue;
+            }
+        }
+
+        return launchedTokens;
+    }, [program, publicKey, connection]);
+
+    const getTokenDetails = useCallback(async (mint: PublicKey) => {
+        if (!program || !publicKey) throw new Error("Program not initialized");
+        console.log("getTokenDetails", mint.toBuffer());
+
+        const [bondingCurvePda] = PublicKey.findProgramAddressSync(
+            [Buffer.from("bonding_curve"), mint.toBuffer()],
+            program.programId
+        );
+        console.log("bondingCurvePda", bondingCurvePda.toString());
+        // Check if account exists first
+        const accountInfo = await connection.getAccountInfo(bondingCurvePda);
+        if (!accountInfo) {
+            console.log("Account not found");
+            return null;
+        }
+
+        try {
+            const bondingCurve = await program.account.bondingCurve.fetch(bondingCurvePda);
+            return {
+                tokenMint: mint,
+                virtualTokenReserve: bondingCurve.virtualTokenReserve,
+                virtualSolReserve: bondingCurve.virtualSolReserve,
+                realTokenReserve: bondingCurve.realTokenReserve,
+                realSolReserve: bondingCurve.realSolReserve,
+                tokenTotalSupply: bondingCurve.tokenTotalSupply,
+                isCompleted: bondingCurve.isCompleted
+            };
+        } catch (e) {
+            console.error('Error fetching token details:', e);
+            return null;
+        }
+    }, [program, publicKey, connection]);
 
     return {
         program,
         configure,
         launch,
         swap,
-    };
+        getLaunchedTokens,
+        getTokenDetails
+    }
 };

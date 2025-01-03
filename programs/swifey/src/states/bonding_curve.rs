@@ -1,11 +1,11 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::Mint;
 
+use crate::errors::SwifeyError;
 use crate::utils::{
     sol_transfer_from_user, sol_transfer_with_signer, token_transfer_user,
     token_transfer_with_signer,
 };
-use crate::errors::SwifeyError;
 
 #[account]
 pub struct BondingCurve {
@@ -51,17 +51,17 @@ impl<'info> BondingCurve {
     // Swap sol for tokens
     pub fn buy(
         &mut self,
-        token_mint: &Account<'info, Mint>, // Token mint address
-        curve_limit: u64, // Bonding Curve Limit
-        user: &Signer<'info>, // User address for buyer
+        token_mint: &Account<'info, Mint>,  // Token mint address
+        curve_limit: u64,                   // Bonding Curve Limit
+        user: &Signer<'info>,               // User address for buyer
         curve_pda: &mut AccountInfo<'info>, // Bonding Curve PDA
-        fee_recipient: &mut AccountInfo<'info>, // Team wallet address to get fees  
-        user_ata: &mut AccountInfo<'info>, // Associated token account for user
-        curve_ata: &AccountInfo<'info>, // Associated token account for bonding curve
-        amount_in: u64, // Amount of SOL to pay
-        min_amount_out: u64, // Minimum amount of tokens to receive
-        fee_percentage: f64, // Fee percentage for buying on the bonding curve
-        curve_bump: u8, // Bump for the bonding curve PDA
+        fee_recipient: &mut AccountInfo<'info>, // Team wallet address to get fees
+        user_ata: &mut AccountInfo<'info>,  // Associated token account for user
+        curve_ata: &AccountInfo<'info>,     // Associated token account for bonding curve
+        amount_in: u64,                     // Amount of SOL to pay
+        min_amount_out: u64,                // Minimum amount of tokens to receive
+        fee_percentage: f64,                // Fee percentage for buying on the bonding curve
+        curve_bump: u8,                     // Bump for the bonding curve PDA
         system_program: &AccountInfo<'info>, // System program
         token_program: &AccountInfo<'info>,
     ) -> Result<bool> {
@@ -69,12 +69,15 @@ impl<'info> BondingCurve {
             self.calculate_amount_out(amount_in, token_mint.decimals, 0, fee_percentage)?;
 
         // Check if the amount out is greater than the minimum amount out
-        require!(amount_out >= min_amount_out, SwifeyError::InsufficientAmountOut);
+        require!(
+            amount_out >= min_amount_out,
+            SwifeyError::InsufficientAmountOut
+        );
 
         // Transfer fee to the team wallet
         sol_transfer_from_user(&user, fee_recipient, system_program, fee_amount)?;
-        
-        // Transfer adjusted amount to curve 
+
+        // Transfer adjusted amount to curve
         sol_transfer_from_user(&user, curve_pda, system_program, amount_in - fee_amount)?;
 
         // Transfer tokens from PDA to user
@@ -106,7 +109,7 @@ impl<'info> BondingCurve {
 
         //Update reserves on the curve
         self.update_reserves(new_sol_reserves, new_token_reserves)?;
-        
+
         //Return true if curve reached its limit
         if new_sol_reserves >= curve_limit {
             self.is_completed = true;
@@ -120,70 +123,94 @@ impl<'info> BondingCurve {
     // Swap tokens for sol
     pub fn sell(
         &mut self,
-        token_mint: &Account<'info, Mint>, // Token mint address
-        user: &Signer<'info>, // User address for seller
-        curve_pda: &mut AccountInfo<'info>, // Bonding Curve PDA
-        user_ata: &mut AccountInfo<'info>, // Associated token account for user
-        fee_recipient: &mut AccountInfo<'info>, // Team wallet address to get fees  
-        curve_ata: &mut AccountInfo<'info>, // Associated token account for bonding curve
-        amount_in: u64, // SOL Amount to pay
-        min_amount_out: u64, // Minimum amount out 
-        fee_percentage: f64, // Selling fee percentage
-        curve_bump: u8, // Bump for the bonding curve PDA
-        system_program: &AccountInfo<'info>, // System program
-        token_program: &AccountInfo<'info>, // Token program
+        token_mint: &Account<'info, Mint>,
+        user: &Signer<'info>,
+        curve_pda: &mut AccountInfo<'info>,
+        user_ata: &mut AccountInfo<'info>,
+        fee_recipient: &mut AccountInfo<'info>,
+        curve_ata: &mut AccountInfo<'info>,
+        amount_in: u64,
+        min_amount_out: u64,
+        fee_percentage: f64,
+        curve_bump: u8,
+        system_program: &AccountInfo<'info>,
+        token_program: &AccountInfo<'info>,
     ) -> Result<()> {
+        msg!("=== SELL OPERATION START ===");
+        msg!("User: {}", user.key());
+        msg!("Fee Recipient: {}", fee_recipient.key());
+        msg!("Curve PDA: {}", curve_pda.key());
+        msg!("User ATA: {}", user_ata.key());
+        msg!("Curve ATA: {}", curve_ata.key());
+        msg!("Amount In: {}", amount_in);
+        msg!("Min Amount Out: {}", min_amount_out);
+        msg!("Fee Percentage: {}", fee_percentage);
+
         let (amount_out, fee_amount) =
             self.calculate_amount_out(amount_in, token_mint.decimals, 1, fee_percentage)?;
+        
+        msg!("Calculated amount_out: {}", amount_out);
+        msg!("Calculated fee_amount: {}", fee_amount);
 
-        // Check if the amount out is greater than the minimum amount out
-        require!(amount_out >= min_amount_out, SwifeyError::InsufficientAmountOut);
+        require!(
+            amount_out >= min_amount_out,
+            SwifeyError::InsufficientAmountOut
+        );
 
         let token = token_mint.key();
-
         let signer_seeds: &[&[&[u8]]] = &[&BondingCurve::get_signer(&token, &curve_bump)];
+        msg!("Generated signer seeds for curve PDA");
 
-        // Transfer fee to the team wallet
+        msg!("Attempting token transfer FROM user TO curve...");
+        msg!("User ATA balance before transfer: {}", user_ata.lamports());
+        msg!("Curve ATA balance before transfer: {}", curve_ata.lamports());
+        token_transfer_user(user_ata, curve_ata, user, token_program, amount_in)?;
+        msg!("Token transfer successful");
+
+        msg!("Attempting SOL transfer FROM curve TO user...");
+        msg!("Curve PDA balance before transfer: {}", curve_pda.lamports());
+        msg!("User balance before transfer: {}", user.lamports());
         sol_transfer_with_signer(
-            &user,
+            curve_pda,
+            user,      
+            system_program,
+            signer_seeds,
+            amount_out - fee_amount,
+        )?;
+        msg!("SOL transfer to user successful");
+
+        msg!("Attempting fee transfer FROM curve TO fee recipient...");
+        msg!("Fee recipient balance before transfer: {}", fee_recipient.lamports());
+        sol_transfer_with_signer(
+            curve_pda, 
             fee_recipient,
             system_program,
             signer_seeds,
             fee_amount,
         )?;
+        msg!("Fee transfer successful");
 
-        // Transfer adjusted amount to curve 
-        sol_transfer_with_signer(
-            &user,
-            curve_pda,
-            system_program,
-            signer_seeds,
-            amount_in - fee_amount,
-        )?;
-        
-        // Transfer token from user to PDA
-        token_transfer_user(user_ata, user, curve_ata, token_program, amount_out)?;
-
-        // Calculate new reserves
         let new_token_reserves = self
             .virtual_token_reserve
-            .checked_add(amount_in)
+            .checked_add(amount_in) 
             .ok_or(SwifeyError::InvalidReserves)?;
 
         let new_sol_reserves = self
             .virtual_sol_reserve
-            .checked_sub(amount_out + fee_amount)
+            .checked_sub(amount_out)
             .ok_or(SwifeyError::InvalidReserves)?;
 
         msg!(
-            "New reserves:: Token: {:?}, Sol: {:?}",
+            "New reserves calculation successful:: Token: {}, Sol: {}",
             new_token_reserves,
             new_sol_reserves
         );
 
-        // Update reserves on the curve
+        msg!("Updating reserves on the curve...");
         self.update_reserves(new_sol_reserves, new_token_reserves)?;
+        msg!("Reserves updated successfully");
 
+        msg!("=== SELL OPERATION COMPLETE ===");
         Ok(())
     }
 
@@ -200,47 +227,23 @@ impl<'info> BondingCurve {
             .checked_sub(fee_amount)
             .ok_or(SwifeyError::InsufficientFunds)?;
 
-        // Convert to u128 for larger number handling
-        let virtual_sol = self.virtual_sol_reserve as u128;
-        let virtual_token = self.virtual_token_reserve as u128;
-        let amount_after_fee = amount_after_fee as u128;
+        let virtual_sol = self.virtual_sol_reserve as f64;
+        let virtual_token = self.virtual_token_reserve as f64;
+        let amount_after_fee = amount_after_fee as f64;
 
-        // Calculate dynamic reserve ratio based on current reserves
-        let reserve_ratio = if virtual_sol > 0 {
-            virtual_token
-                .checked_mul(1_000_000)  // Scale for precision (PPM)
-                .and_then(|r| r.checked_div(virtual_sol))
-                .ok_or(SwifeyError::InvalidReserves)?
-        } else {
-            return Err(SwifeyError::InvalidReserves.into());
-        };
-
-        println!("Dynamic reserve ratio: {}", reserve_ratio);
+        const CRR: f64 = 0.2;
 
         let amount_out = if direction == 0 {
-            // Buy tokens
-            let tokens_out = amount_after_fee
-                .checked_mul(virtual_token)
-                .and_then(|r| r.checked_mul(reserve_ratio))
-                .and_then(|r| r.checked_div(1_000_000)) // Remove PPM scaling
-                .and_then(|r| r.checked_div(virtual_sol))
-                .ok_or(SwifeyError::InvalidReserves)?;
-
-            tokens_out
+            let base = 1.0 + amount_after_fee / virtual_sol;
+            virtual_token * (base.powf(CRR) - 1.0)
         } else {
-            // Sell tokens
-            let sol_out = amount_after_fee
-                .checked_mul(virtual_sol)
-                .and_then(|r| r.checked_mul(reserve_ratio))
-                .and_then(|r| r.checked_div(1_000_000)) // Remove PPM scaling
-                .and_then(|r| r.checked_div(virtual_token))
-                .ok_or(SwifeyError::InvalidReserves)?;
-
-            sol_out
+            let base = 1.0 - amount_after_fee / virtual_token;
+            virtual_sol * (1.0 - base.powf(1.0 / CRR))
         };
 
-        let final_amount = u64::try_from(amount_out).map_err(|_| SwifeyError::IncorrectValueRange)?;
-        println!("Calculated amount out: {}", final_amount);
+        let final_amount = amount_out.floor() as u64;
+
+        msg!("Final amount before decimal adjustment: {}", final_amount);
 
         let adjusted_amount = if direction == 0 {
             final_amount
@@ -248,7 +251,11 @@ impl<'info> BondingCurve {
                 .ok_or(SwifeyError::InvalidReserves)?
         } else {
             final_amount
+                .checked_mul(10u64.pow(token_decimal as u32))
+                .ok_or(SwifeyError::InvalidReserves)?
         };
+
+        msg!("Final adjusted amount: {}", adjusted_amount);
 
         Ok((adjusted_amount, fee_amount))
     }

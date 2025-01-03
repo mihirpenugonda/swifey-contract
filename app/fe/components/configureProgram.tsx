@@ -13,38 +13,46 @@ export const ConfigureProgram: FC = () => {
     const [success, setSuccess] = useState(false);
 
     const handleConfigure = async () => {
-        if (!connected) return;
-        if (!publicKey) return;
+        if (!connected || !publicKey) return;
         
         setLoading(true);
         setError(null);
         try {
-            const TOTAL_SUPPLY = new BN(1_000_000_000); // 1 billion tokens
-            const INITIAL_MARKET_CAP = new BN(2_200); // 2.2k initial market cap
-            const TARGET_MARKET_CAP = new BN(69_000); // 69k target market cap
-            const BONDING_RATIO = 0.8; // 80% for bonding curve, 20% for Raydium LP
+            // 1. First define base amounts WITHOUT decimals
+            const BASE_SUPPLY = new BN('1000000000');  // 1B base tokens
+            
+            // 2. Calculate 80% for virtual reserve BEFORE adding decimals
+            const VIRTUAL_RESERVE = BASE_SUPPLY.muln(8).divn(10);  // 800M base tokens
+            
+            // 3. Then add decimals to both
+            const DECIMALS = new BN(6);
+            const TOTAL_SUPPLY = BASE_SUPPLY.mul(new BN(10).pow(DECIMALS));  // 1B with decimals
+            const VIRTUAL_RESERVE_WITH_DECIMALS = VIRTUAL_RESERVE.mul(new BN(10).pow(DECIMALS));  // 800M with decimals
+            
+            // SOL amounts
+            const INITIAL_MARKET_CAP = new BN('2200').mul(new BN(10).pow(new BN(9)));  // 2.2k SOL
+            const TARGET_MARKET_CAP = new BN('69000').mul(new BN(10).pow(new BN(9)));  // 69k SOL
             
             const config = {
                 authority: publicKey,
                 feeRecipient: publicKey,
-                curveLimit: TARGET_MARKET_CAP, // 69K SOL for bonding curve
-                initialVirtualTokenReserve: TOTAL_SUPPLY.muln(BONDING_RATIO), // 800M tokens
-                initialVirtualSolReserve: new BN(INITIAL_MARKET_CAP), // 2.2k SOL
+                curveLimit: TARGET_MARKET_CAP,
+                initialVirtualTokenReserve: VIRTUAL_RESERVE_WITH_DECIMALS,  // 800M WITH decimals
+                initialVirtualSolReserve: INITIAL_MARKET_CAP,
                 initialRealTokenReserve: new BN(0),
-                totalTokenSupply: TOTAL_SUPPLY, // 1B total supply
-                buyFeePercentage: 1, // 1% fee
-                sellFeePercentage: 1, // 1% fee
-                migrationFeePercentage: 1, // 1% fee
+                totalTokenSupply: TOTAL_SUPPLY,
+                buyFeePercentage: 0.5,
+                sellFeePercentage: 0.5,
+                migrationFeePercentage: 0.5,
             };
+            
+            console.log("Virtual Reserve:", VIRTUAL_RESERVE_WITH_DECIMALS.toString());
             const tx = await configure(config);
-            console.log('Program configured:', tx);
             setSuccess(true);
         } catch (err) {
-            console.error('Configuration failed:', err);
             setError(err instanceof Error ? err.message : 'An unknown error occurred');
-        } finally {
-            setLoading(false);
         }
+        setLoading(false);
     };
 
     return (

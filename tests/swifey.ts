@@ -1,7 +1,7 @@
 import { describe, it } from "mocha";
 import * as anchor from "@coral-xyz/anchor";
-import { Program } from "@coral-xyz/anchor";
-import { Swifey } from "../target/types/swifey";
+import { Program, Idl } from "@coral-xyz/anchor";
+import type { Swifey } from "../target/types/swifey";
 import {
   PublicKey,
   Keypair,
@@ -104,7 +104,7 @@ describe("swifey", () => {
       .signers([creator])
       .rpc();
 
-    const config = await program.account.config.fetch(configPda);
+    const config = await program.account.Config.fetch(configPda);
     expect(config.buyFeePercentage).to.equal(buyFeePercentage);
     expect(config.sellFeePercentage).to.equal(sellFeePercentage);
     expect(config.curveLimit.toString()).to.equal(curveLimit.toString());
