@@ -66,7 +66,7 @@ impl<'info> BondingCurve {
         token_program: &AccountInfo<'info>,
     ) -> Result<bool> {
         let (amount_out, fee_amount) =
-            self.calculate_amount_out(amount_in, token_mint.decimals, 0, fee_percentage)?;
+            self.calculate_amount_out(amount_in, 0, fee_percentage)?;
 
         // Check if the amount out is greater than the minimum amount out
         require!(
@@ -147,7 +147,7 @@ impl<'info> BondingCurve {
         msg!("Fee Percentage: {}", fee_percentage);
 
         let (amount_out, fee_amount) =
-            self.calculate_amount_out(amount_in, token_mint.decimals, 1, fee_percentage)?;
+            self.calculate_amount_out(amount_in, 1, fee_percentage)?;
         
         msg!("Calculated amount_out: {}", amount_out);
         msg!("Calculated fee_amount: {}", fee_amount);
@@ -218,9 +218,8 @@ impl<'info> BondingCurve {
     pub fn calculate_amount_out(
         &mut self,
         amount_in: u64,
-        token_decimal: u8,
         direction: u8,
-        fee_percentage: f64,
+        fee_percentage: f64,    
     ) -> Result<(u64, u64)> {
         let fee_amount = (amount_in as f64 * fee_percentage / 100.0) as u64;
         let amount_after_fee = amount_in
@@ -245,18 +244,6 @@ impl<'info> BondingCurve {
 
         msg!("Final amount before decimal adjustment: {}", final_amount);
 
-        let adjusted_amount = if direction == 0 {
-            final_amount
-                .checked_mul(10u64.pow(token_decimal as u32))
-                .ok_or(SwifeyError::InvalidReserves)?
-        } else {
-            final_amount
-                .checked_mul(10u64.pow(token_decimal as u32))
-                .ok_or(SwifeyError::InvalidReserves)?
-        };
-
-        msg!("Final adjusted amount: {}", adjusted_amount);
-
-        Ok((adjusted_amount, fee_amount))
+        Ok((final_amount, fee_amount))
     }
 }

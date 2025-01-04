@@ -11,7 +11,7 @@ use crate::instructions::*;
 declare_id!("DRHbVragqmDceUKDRPdu8ogSZbNFAbcherr3PZ2CZ8Nt");
 
 #[program]
-mod swifey {
+pub mod swifey {
     use super::*;
 
     pub fn configure(ctx: Context<Configure>, new_config: states::Config) -> Result<()> {
