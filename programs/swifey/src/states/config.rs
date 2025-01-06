@@ -1,7 +1,6 @@
 use anchor_lang::prelude::*;
 
 #[account]
-
 pub struct Config {
     pub authority: Pubkey, // Authority address
     pub fee_recipient: Pubkey, // Team wallet address

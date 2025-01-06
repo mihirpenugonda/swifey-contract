@@ -7,14 +7,15 @@ pub mod states;
 pub mod utils;
 
 use crate::instructions::*;
+use crate::states::*;
 
-declare_id!("DRHbVragqmDceUKDRPdu8ogSZbNFAbcherr3PZ2CZ8Nt");
+declare_id!("ANuqfyR8ETpfr1EhZ7ZbqDo1p53qoP6X6bykC168Gaa4");
 
 #[program]
 pub mod swifey {
     use super::*;
 
-    pub fn configure(ctx: Context<Configure>, new_config: states::Config) -> Result<()> {
+    pub fn configure(ctx: Context<Configure>, new_config: Config) -> Result<()> {
         ctx.accounts.process(new_config)
     }
 
@@ -32,7 +33,7 @@ pub mod swifey {
 
     pub fn migrate(
         ctx: Context<Migrate>,
-        params: instructions::MigrateParams
+        params: MigrateParams
     ) -> Result<()> {
         Migrate::process(ctx, params)
     }

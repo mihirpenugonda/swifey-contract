@@ -1,7 +1,7 @@
 use anchor_lang::{
     prelude::*,
     solana_program::{
-        program::{invoke, invoke_signed},
+        program::invoke,
         system_instruction::transfer,
     },
 };
@@ -30,21 +30,12 @@ pub fn sol_transfer_from_user<'info>(
 pub fn sol_transfer_with_signer<'info>(
     source: &AccountInfo<'info>,
     destination: &AccountInfo<'info>,
-    system_program: &AccountInfo<'info>,
-    signer_seeds: &[&[&[u8]]],
+    _system_program: &AccountInfo<'info>,
+    _signer_seeds: &[&[&[u8]]],
     amount: u64,
 ) -> Result<()> {
-    let tx = transfer(source.key, destination.key, amount);
-    invoke_signed(
-        &tx,
-        &[
-            source.to_account_info(),
-            destination.to_account_info(),
-            system_program.to_account_info(),
-        ],
-        signer_seeds,
-    )?;
-
+    source.sub_lamports(amount)?;
+    destination.add_lamports(amount)?;
     Ok(())
 }
 

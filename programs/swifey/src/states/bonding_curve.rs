@@ -145,7 +145,7 @@ impl<'info> BondingCurve {
         msg!("Amount In: {}", amount_in);
         msg!("Min Amount Out: {}", min_amount_out);
         msg!("Fee Percentage: {}", fee_percentage);
-
+        msg!("Token Program: {}", token_program.key());
         let (amount_out, fee_amount) =
             self.calculate_amount_out(amount_in, 1, fee_percentage)?;
         
