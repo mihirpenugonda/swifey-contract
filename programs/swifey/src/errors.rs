@@ -52,4 +52,7 @@ pub enum SwifeyError {
 
     #[msg("Slippage tolerance exceeded")]
     SlippageExceeded,
+
+    #[msg("Division by zero not allowed")]
+    DivisionByZero,
 }

@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_spl::token::{Token, TokenAccount, Mint};
 use crate::states::{BondingCurve, Config};
 use crate::errors::SwifeyError;
-use crate::utils::{token_transfer_with_signer, sol_transfer_with_signer};
+use crate::utils::{sol_transfer_with_signer, token_transfer_with_signer, MigrationCompleted};
 use raydium_amm_v3::states::PoolState;
 
 #[derive(Accounts)]
@@ -153,10 +153,13 @@ impl<'info> Migrate<'info> {
         // Mark as migrated
         bonding_curve.is_migrated = true;
     
-        msg!("Migration completed successfully");
-        msg!("Migrated SOL amount: {}", remaining_sol);
-        msg!("Migrated token amount: {}", token_balance);
-        msg!("Migration fee paid: {}", migration_fee);
+        emit!(MigrationCompleted{
+            token_mint: ctx.accounts.token_mint.key(),
+            sol_amount: remaining_sol,
+            token_amount: token_balance,
+            migration_fee: migration_fee,
+            raydium_pool: ctx.accounts.raydium_pool.key(),
+        });
         
         Ok(())
     }

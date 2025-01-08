@@ -15,10 +15,12 @@ pub struct Config {
     // Fee percentages
     pub buy_fee_percentage: f64,
     pub sell_fee_percentage: f64,
-    pub migration_fee_percentage: f64
+    pub migration_fee_percentage: f64,
+
+    pub reserved: [[u8; 8]; 8]
 }
 
 impl Config {
     pub const SEED_PREFIX: &'static str = "global_config";
-    pub const LEN: usize = 32 + 32 + 8 + 8 * 4 + 8 * 3;
+    pub const LEN: usize = 32 + 32 + 8 + (8 * 4) + (8 * 3) + 64;
 }

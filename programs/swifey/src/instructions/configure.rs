@@ -21,8 +21,7 @@ pub struct Configure<'info> {
 
 impl<'info> Configure<'info> {
     pub fn process(&mut self, new_config: Config) -> Result<()> {
-        msg!("global_config.authority: {:?}", self.global_config.authority);
-        msg!("admin.key(): {:?}", self.admin.key());
+            
         if !self.global_config.authority.eq(&Pubkey::default()) {
             require!(
                 self.global_config.authority.eq(&self.admin.key()),
