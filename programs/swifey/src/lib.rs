@@ -9,7 +9,7 @@ pub mod utils;
 use crate::instructions::*;
 use crate::states::*;
 
-declare_id!("ANuqfyR8ETpfr1EhZ7ZbqDo1p53qoP6X6bykC168Gaa4");
+declare_id!("8K85SmcVXS59QMf4uESEPggxQtdrz3dkES3qLHREYx6z");
 
 #[program]
 pub mod swifey {
@@ -31,11 +31,8 @@ pub mod swifey {
         ctx.accounts.process(amount, direction, min_out, ctx.bumps.bonding_curve)
     }
 
-    pub fn migrate(
-        ctx: Context<Migrate>,
-        params: MigrateParams
-    ) -> Result<()> {
-        Migrate::process(ctx, params)
+    pub fn migrate(ctx: Context<Migrate>) -> Result<()> {
+        Migrate::process(ctx)
     }
 
 }
