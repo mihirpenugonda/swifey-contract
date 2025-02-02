@@ -197,6 +197,11 @@
           "isSigner": false
         },
         {
+          "name": "wsolMint",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
           "name": "curveTokenAccount",
           "isMut": true,
           "isSigner": false
@@ -207,13 +212,38 @@
           "isSigner": false
         },
         {
-          "name": "raydiumPool",
+          "name": "poolState",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "observationState",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "tokenVault0",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "tokenVault1",
+          "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "tickArrayBitmap",
           "isMut": true,
           "isSigner": false
         },
         {
           "name": "feeRecipient",
           "isMut": true,
+          "isSigner": false
+        },
+        {
+          "name": "ammConfig",
+          "isMut": false,
           "isSigner": false
         },
         {
@@ -225,19 +255,83 @@
           "name": "systemProgram",
           "isMut": false,
           "isSigner": false
+        },
+        {
+          "name": "raydiumProgram",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "rent",
+          "isMut": false,
+          "isSigner": false
         }
       ],
-      "args": [
-        {
-          "name": "params",
-          "type": {
-            "defined": "MigrateParams"
-          }
-        }
-      ]
+      "args": []
     }
   ],
   "accounts": [
+    {
+      "name": "AmmConfig",
+      "docs": ["Holds the current owner of the factory"],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "bump",
+            "docs": ["Bump to identify PDA"],
+            "type": "u8"
+          },
+          {
+            "name": "index",
+            "type": "u16"
+          },
+          {
+            "name": "owner",
+            "docs": ["Address of the protocol owner"],
+            "type": "publicKey"
+          },
+          {
+            "name": "protocolFeeRate",
+            "docs": ["The protocol fee"],
+            "type": "u32"
+          },
+          {
+            "name": "tradeFeeRate",
+            "docs": [
+              "The trade fee, denominated in hundredths of a bip (10^-6)"
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "tickSpacing",
+            "docs": ["The tick spacing"],
+            "type": "u16"
+          },
+          {
+            "name": "fundFeeRate",
+            "docs": [
+              "The fund fee, denominated in hundredths of a bip (10^-6)"
+            ],
+            "type": "u32"
+          },
+          {
+            "name": "paddingU32",
+            "type": "u32"
+          },
+          {
+            "name": "fundOwner",
+            "type": "publicKey"
+          },
+          {
+            "name": "padding",
+            "type": {
+              "array": ["u64", 3]
+            }
+          }
+        ]
+      }
+    },
     {
       "name": "BondingCurve",
       "type": {
@@ -270,6 +364,12 @@
           {
             "name": "isMigrated",
             "type": "bool"
+          },
+          {
+            "name": "reserved",
+            "type": {
+              "array": ["u8", 8]
+            }
           }
         ]
       }
@@ -318,6 +418,17 @@
           {
             "name": "migrationFeePercentage",
             "type": "f64"
+          },
+          {
+            "name": "reserved",
+            "type": {
+              "array": [
+                {
+                  "array": ["u8", 8]
+                },
+                8
+              ]
+            }
           }
         ]
       }
@@ -325,20 +436,180 @@
   ],
   "types": [
     {
-      "name": "MigrateParams",
+      "name": "Config",
       "type": {
         "kind": "struct",
         "fields": [
           {
-            "name": "minimumSolAmount",
+            "name": "authority",
+            "type": "publicKey"
+          },
+          {
+            "name": "feeRecipient",
+            "type": "publicKey"
+          },
+          {
+            "name": "curveLimit",
             "type": "u64"
           },
           {
-            "name": "minimumTokenAmount",
+            "name": "initialVirtualTokenReserve",
             "type": "u64"
+          },
+          {
+            "name": "initialVirtualSolReserve",
+            "type": "u64"
+          },
+          {
+            "name": "initialRealTokenReserve",
+            "type": "u64"
+          },
+          {
+            "name": "totalTokenSupply",
+            "type": "u64"
+          },
+          {
+            "name": "buyFeePercentage",
+            "type": "f64"
+          },
+          {
+            "name": "sellFeePercentage",
+            "type": "f64"
+          },
+          {
+            "name": "migrationFeePercentage",
+            "type": "f64"
+          },
+          {
+            "name": "reserved",
+            "type": {
+              "array": [
+                {
+                  "array": ["u8", 8]
+                },
+                8
+              ]
+            }
           }
         ]
       }
+    }
+  ],
+  "events": [
+    {
+      "name": "MigrationCompleted",
+      "fields": [
+        {
+          "name": "tokenMint",
+          "type": "publicKey",
+          "index": false
+        },
+        {
+          "name": "solAmount",
+          "type": "u64",
+          "index": false
+        },
+        {
+          "name": "tokenAmount",
+          "type": "u64",
+          "index": false
+        },
+        {
+          "name": "migrationFee",
+          "type": "u64",
+          "index": false
+        },
+        {
+          "name": "raydiumPool",
+          "type": "publicKey",
+          "index": false
+        }
+      ]
+    },
+    {
+      "name": "TokenPurchased",
+      "fields": [
+        {
+          "name": "tokenMint",
+          "type": "publicKey",
+          "index": false
+        },
+        {
+          "name": "buyer",
+          "type": "publicKey",
+          "index": false
+        },
+        {
+          "name": "solAmount",
+          "type": "u64",
+          "index": false
+        },
+        {
+          "name": "tokenAmount",
+          "type": "u64",
+          "index": false
+        },
+        {
+          "name": "feeAmount",
+          "type": "u64",
+          "index": false
+        },
+        {
+          "name": "price",
+          "type": "u64",
+          "index": false
+        }
+      ]
+    },
+    {
+      "name": "TokenSold",
+      "fields": [
+        {
+          "name": "tokenMint",
+          "type": "publicKey",
+          "index": false
+        },
+        {
+          "name": "solAmount",
+          "type": "u64",
+          "index": false
+        },
+        {
+          "name": "tokenAmount",
+          "type": "u64",
+          "index": false
+        },
+        {
+          "name": "feeAmount",
+          "type": "u64",
+          "index": false
+        },
+        {
+          "name": "price",
+          "type": "u64",
+          "index": false
+        }
+      ]
+    },
+    {
+      "name": "CurveCompleted",
+      "fields": [
+        {
+          "name": "tokenMint",
+          "type": "publicKey",
+          "index": false
+        },
+        {
+          "name": "finalSolReserve",
+          "type": "u64",
+          "index": false
+        },
+        {
+          "name": "finalTokenReserve",
+          "type": "u64",
+          "index": false
+        }
+      ]
     }
   ],
   "errors": [
@@ -426,9 +697,26 @@
       "code": 6016,
       "name": "SlippageExceeded",
       "msg": "Slippage tolerance exceeded"
+    },
+    {
+      "code": 6017,
+      "name": "DivisionByZero",
+      "msg": "Division by zero not allowed"
+    },
+    {
+      "code": 6018,
+      "name": "InvalidTokenAllocation",
+      "msg": "Invalid token allocation - must allocate at least 80% to bonding curve"
+    },
+    {
+      "code": 6019,
+      "name": "InvalidCurveLimit",
+      "msg": "Invalid curve limit - must be exactly 42 SOL"
+    },
+    {
+      "code": 6020,
+      "name": "InvalidInitialSolReserve",
+      "msg": "Invalid initial SOL reserve - must be exactly 10.5 SOL"
     }
-  ],
-  "metadata": {
-    "address": "ANuqfyR8ETpfr1EhZ7ZbqDo1p53qoP6X6bykC168Gaa4"
-  }
+  ]
 }

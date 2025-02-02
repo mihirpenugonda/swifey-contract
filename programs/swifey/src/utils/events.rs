@@ -27,3 +27,10 @@ pub struct TokenPurchased {
     pub fee_amount: u64,
     pub price: u64
 }
+
+#[event]
+pub struct CurveCompleted {
+    pub token_mint: Pubkey,
+    pub final_sol_reserve: u64,
+    pub final_token_reserve: u64,
+}

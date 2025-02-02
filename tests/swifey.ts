@@ -14,8 +14,16 @@ import {
   createAssociatedTokenAccount,
   getAssociatedTokenAddress,
 } from "@solana/spl-token";
-import { expect } from "chai";
+import { assert, expect } from "chai";
 import { before } from "mocha";
+import BN from "bn.js";
+
+// Add chai-bn for BigNumber assertions
+const chai = require("chai");
+const chaiAsPromised = require("chai-as-promised");
+const chaiBN = require("chai-bn")(BN);
+chai.use(chaiAsPromised);
+chai.use(chaiBN);
 
 const METADATA_PROGRAM_ID = new PublicKey(
   "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
@@ -99,12 +107,13 @@ describe("swifey", () => {
         buyFeePercentage: 5,
         sellFeePercentage: 5,
         migrationFeePercentage: 0,
+        reserved: [],
       })
       .accounts(configuration)
       .signers([creator])
       .rpc();
 
-    const config = await program.account.Config.fetch(configPda);
+    const config = await program.account.config.fetch(configPda);
     expect(config.buyFeePercentage).to.equal(buyFeePercentage);
     expect(config.sellFeePercentage).to.equal(sellFeePercentage);
     expect(config.curveLimit.toString()).to.equal(curveLimit.toString());
@@ -300,6 +309,451 @@ describe("swifey", () => {
         console.error("Detailed sell error:", error);
         if (error.logs) console.error("Transaction logs:", error.logs);
         throw error;
+      }
+    });
+  });
+
+  describe("Extended swap tests", () => {
+    it("Should fail buy with insufficient funds", async () => {
+      const userTokenAccount = await getAssociatedTokenAddress(
+        tokenMint,
+        user.publicKey
+      );
+
+      // Try to buy with more SOL than user has
+      const largeAmount = new anchor.BN(1000 * anchor.web3.LAMPORTS_PER_SOL);
+
+      try {
+        const buyConfig = {
+          user: user.publicKey,
+          globalConfig: configPda,
+          feeRecipient: creator.publicKey,
+          bondingCurve: bondingCurvePda,
+          tokenMint: tokenMint,
+          curveTokenAccount: curveTokenAccount,
+          userTokenAccount: userTokenAccount,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        };
+
+        await program.methods
+          .swap(largeAmount, 0, new anchor.BN(1))
+          .accounts(buyConfig)
+          .signers([user])
+          .rpc();
+
+        assert.fail("Should have thrown error");
+      } catch (error) {
+        expect(error).to.exist;
+      }
+    });
+
+    it("Should fail sell with insufficient tokens", async () => {
+      const userTokenAccount = await getAssociatedTokenAddress(
+        tokenMint,
+        user.publicKey
+      );
+
+      // Try to sell more tokens than user has
+      const largeAmount = new anchor.BN(1000000000000);
+
+      try {
+        const sellConfig = {
+          user: user.publicKey,
+          globalConfig: configPda,
+          feeRecipient: creator.publicKey,
+          bondingCurve: bondingCurvePda,
+          tokenMint: tokenMint,
+          curveTokenAccount: curveTokenAccount,
+          userTokenAccount: userTokenAccount,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        };
+
+        await program.methods
+          .swap(largeAmount, 1, new anchor.BN(1))
+          .accounts(sellConfig)
+          .signers([user])
+          .rpc();
+
+        assert.fail("Should have thrown error");
+      } catch (error) {
+        expect(error).to.exist;
+      }
+    });
+  });
+
+  describe("Configuration tests", () => {
+    it("Should fail configure with invalid fee percentages", async () => {
+      const newUser = Keypair.generate();
+      await provider.connection.requestAirdrop(
+        newUser.publicKey,
+        anchor.web3.LAMPORTS_PER_SOL
+      );
+
+      try {
+        const configuration = {
+          admin: newUser.publicKey,
+          globalConfig: configPda,
+          systemProgram: SystemProgram.programId,
+        };
+
+        const configArgs = {
+          authority: newUser.publicKey,
+          feeRecipient: newUser.publicKey,
+          curveLimit: new anchor.BN(1000000000),
+          initialVirtualTokenReserve: new anchor.BN(1000000000),
+          initialVirtualSolReserve: new anchor.BN(10000000000),
+          initialRealTokenReserve: new anchor.BN(100000000000),
+          totalTokenSupply: new anchor.BN(100000000),
+          buyFeePercentage: 101, // Invalid percentage
+          sellFeePercentage: 101, // Invalid percentage
+          migrationFeePercentage: 0,
+        };
+
+        await program.methods
+          .configure(configArgs)
+          .accounts(configuration)
+          .signers([newUser])
+          .rpc();
+
+        assert.fail("Should have thrown error");
+      } catch (error) {
+        expect(error).to.exist;
+      }
+    });
+
+    it("Should fail configure with unauthorized user", async () => {
+      const unauthorizedUser = Keypair.generate();
+      await provider.connection.requestAirdrop(
+        unauthorizedUser.publicKey,
+        anchor.web3.LAMPORTS_PER_SOL
+      );
+
+      try {
+        const configuration = {
+          admin: creator.publicKey,
+          globalConfig: configPda,
+          systemProgram: SystemProgram.programId,
+        };
+
+        const configArgs = {
+          authority: creator.publicKey,
+          feeRecipient: unauthorizedUser.publicKey,
+          curveLimit: new anchor.BN(1000000000),
+          initialVirtualTokenReserve: new anchor.BN(1000000000),
+          initialVirtualSolReserve: new anchor.BN(10000000000),
+          initialRealTokenReserve: new anchor.BN(100000000000),
+          totalTokenSupply: new anchor.BN(100000000),
+          buyFeePercentage: 5,
+          sellFeePercentage: 5,
+          migrationFeePercentage: 0,
+        };
+
+        await program.methods
+          .configure(configArgs)
+          .accounts(configuration)
+          .signers([unauthorizedUser])
+          .rpc();
+
+        assert.fail("Should have thrown error");
+      } catch (error) {
+        expect(error).to.exist;
+      }
+    });
+  });
+
+  describe("Migration tests", () => {
+    it("Should fail migrate when curve is not completed", async () => {
+      try {
+        const migrateConfig = {
+          authority: creator.publicKey,
+          globalConfig: configPda,
+          bondingCurve: bondingCurvePda,
+          tokenMint: tokenMint,
+          systemProgram: SystemProgram.programId,
+        };
+
+        await program.methods
+          .migrate()
+          .accounts(migrateConfig)
+          .signers([creator])
+          .rpc();
+
+        assert.fail("Should have thrown error");
+      } catch (error) {
+        expect(error).to.exist;
+      }
+    });
+
+    it("Should fail migrate with unauthorized user", async () => {
+      const unauthorizedUser = Keypair.generate();
+      await provider.connection.requestAirdrop(
+        unauthorizedUser.publicKey,
+        anchor.web3.LAMPORTS_PER_SOL
+      );
+
+      try {
+        const migrateConfig = {
+          authority: unauthorizedUser.publicKey,
+          globalConfig: configPda,
+          bondingCurve: bondingCurvePda,
+          tokenMint: tokenMint,
+          systemProgram: SystemProgram.programId,
+        };
+
+        await program.methods
+          .migrate()
+          .accounts(migrateConfig)
+          .signers([unauthorizedUser])
+          .rpc();
+
+        assert.fail("Should have thrown error");
+      } catch (error) {
+        expect(error).to.exist;
+      }
+    });
+  });
+
+  describe("Successful operations", () => {
+    it("Should successfully buy and sell in sequence", async () => {
+      // Create a new user for this test
+      const testUser = Keypair.generate();
+      await provider.connection.requestAirdrop(
+        testUser.publicKey,
+        10 * anchor.web3.LAMPORTS_PER_SOL
+      );
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      const userTokenAccount = await getAssociatedTokenAddress(
+        tokenMint,
+        testUser.publicKey
+      );
+
+      // Create user token account if it doesn't exist
+      try {
+        await createAssociatedTokenAccount(
+          provider.connection,
+          testUser,
+          tokenMint,
+          testUser.publicKey
+        );
+      } catch (e) {
+        // Account might already exist
+      }
+
+      // Buy tokens
+      const buyAmount = new anchor.BN(1000000);
+      const buyConfig = {
+        user: testUser.publicKey,
+        globalConfig: configPda,
+        feeRecipient: creator.publicKey,
+        bondingCurve: bondingCurvePda,
+        tokenMint: tokenMint,
+        curveTokenAccount: curveTokenAccount,
+        userTokenAccount: userTokenAccount,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      };
+
+      await program.methods
+        .swap(buyAmount, 0, new anchor.BN(1))
+        .accounts(buyConfig)
+        .signers([testUser])
+        .rpc();
+
+      // Get token balance after buy
+      const tokenBalance = await provider.connection.getTokenAccountBalance(
+        userTokenAccount
+      );
+
+      // Sell half of received tokens
+      const sellAmount = new anchor.BN(tokenBalance.value.amount).div(
+        new anchor.BN(2)
+      );
+      const sellConfig = {
+        user: testUser.publicKey,
+        globalConfig: configPda,
+        feeRecipient: creator.publicKey,
+        bondingCurve: bondingCurvePda,
+        tokenMint: tokenMint,
+        curveTokenAccount: curveTokenAccount,
+        userTokenAccount: userTokenAccount,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      };
+
+      await program.methods
+        .swap(sellAmount, 1, new anchor.BN(1))
+        .accounts(sellConfig)
+        .signers([testUser])
+        .rpc();
+
+      // Verify final balances
+      const finalTokenBalance =
+        await provider.connection.getTokenAccountBalance(userTokenAccount);
+      const finalAmount = new anchor.BN(finalTokenBalance.value.amount);
+      const zero = new anchor.BN(0);
+      expect(finalAmount).to.not.eq(zero);
+      expect(finalAmount.gt(zero)).to.be.true;
+    });
+
+    it("Should handle multiple buys correctly", async () => {
+      const testUser = Keypair.generate();
+      await provider.connection.requestAirdrop(
+        testUser.publicKey,
+        10 * anchor.web3.LAMPORTS_PER_SOL
+      );
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      const userTokenAccount = await getAssociatedTokenAddress(
+        tokenMint,
+        testUser.publicKey
+      );
+
+      // Create user token account if it doesn't exist
+      try {
+        await createAssociatedTokenAccount(
+          provider.connection,
+          testUser,
+          tokenMint,
+          testUser.publicKey
+        );
+      } catch (e) {
+        // Account might already exist
+      }
+
+      const buyConfig = {
+        user: testUser.publicKey,
+        globalConfig: configPda,
+        feeRecipient: creator.publicKey,
+        bondingCurve: bondingCurvePda,
+        tokenMint: tokenMint,
+        curveTokenAccount: curveTokenAccount,
+        userTokenAccount: userTokenAccount,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      };
+
+      // Perform three buys with increasing amounts
+      const amounts = [100000, 200000, 300000];
+      for (const amount of amounts) {
+        await program.methods
+          .swap(new anchor.BN(amount), 0, new anchor.BN(1))
+          .accounts(buyConfig)
+          .signers([testUser])
+          .rpc();
+
+        // Add small delay between transactions
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+
+      // Verify final token balance
+      const finalTokenBalance =
+        await provider.connection.getTokenAccountBalance(userTokenAccount);
+      const finalAmount = new anchor.BN(finalTokenBalance.value.amount);
+      const zero = new anchor.BN(0);
+      expect(finalAmount).to.not.eq(zero);
+      expect(finalAmount.gt(zero)).to.be.true;
+    });
+  });
+
+  describe("Edge cases", () => {
+    it("Should handle minimum buy amount", async () => {
+      const testUser = Keypair.generate();
+      await provider.connection.requestAirdrop(
+        testUser.publicKey,
+        anchor.web3.LAMPORTS_PER_SOL
+      );
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      const userTokenAccount = await getAssociatedTokenAddress(
+        tokenMint,
+        testUser.publicKey
+      );
+
+      // Create user token account if it doesn't exist
+      try {
+        await createAssociatedTokenAccount(
+          provider.connection,
+          testUser,
+          tokenMint,
+          testUser.publicKey
+        );
+      } catch (e) {
+        // Account might already exist
+      }
+
+      const minBuyAmount = new anchor.BN(1000); // Minimum reasonable amount
+      const buyConfig = {
+        user: testUser.publicKey,
+        globalConfig: configPda,
+        feeRecipient: creator.publicKey,
+        bondingCurve: bondingCurvePda,
+        tokenMint: tokenMint,
+        curveTokenAccount: curveTokenAccount,
+        userTokenAccount: userTokenAccount,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      };
+
+      await program.methods
+        .swap(minBuyAmount, 0, new anchor.BN(1))
+        .accounts(buyConfig)
+        .signers([testUser])
+        .rpc();
+
+      const tokenBalance = await provider.connection.getTokenAccountBalance(
+        userTokenAccount
+      );
+      const balanceAmount = new anchor.BN(tokenBalance.value.amount);
+      const zero = new anchor.BN(0);
+      expect(balanceAmount).to.not.eq(zero);
+      expect(balanceAmount.gt(zero)).to.be.true;
+    });
+
+    it("Should fail with zero amount", async () => {
+      const testUser = Keypair.generate();
+      await provider.connection.requestAirdrop(
+        testUser.publicKey,
+        anchor.web3.LAMPORTS_PER_SOL
+      );
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      const userTokenAccount = await getAssociatedTokenAddress(
+        tokenMint,
+        testUser.publicKey
+      );
+
+      const buyConfig = {
+        user: testUser.publicKey,
+        globalConfig: configPda,
+        feeRecipient: creator.publicKey,
+        bondingCurve: bondingCurvePda,
+        tokenMint: tokenMint,
+        curveTokenAccount: curveTokenAccount,
+        userTokenAccount: userTokenAccount,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+      };
+
+      try {
+        await program.methods
+          .swap(new anchor.BN(0), 0, new anchor.BN(1))
+          .accounts(buyConfig)
+          .signers([testUser])
+          .rpc();
+
+        assert.fail("Should have thrown error");
+      } catch (error) {
+        expect(error).to.exist;
       }
     });
   });

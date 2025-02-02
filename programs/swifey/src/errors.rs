@@ -55,4 +55,13 @@ pub enum SwifeyError {
 
     #[msg("Division by zero not allowed")]
     DivisionByZero,
+
+    #[msg("Invalid token allocation - must allocate at least 80% to bonding curve")]
+    InvalidTokenAllocation,
+
+    #[msg("Invalid curve limit - must be exactly 42 SOL")]
+    InvalidCurveLimit,
+
+    #[msg("Invalid initial SOL reserve - must be exactly 10.5 SOL")]
+    InvalidInitialSolReserve,
 }

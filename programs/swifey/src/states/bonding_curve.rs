@@ -4,7 +4,7 @@ use anchor_spl::token::Mint;
 use crate::errors::SwifeyError;
 use crate::utils::{
     sol_transfer_from_user, sol_transfer_with_signer, token_transfer_user,
-    token_transfer_with_signer, TokenPurchased, TokenSold
+    token_transfer_with_signer, TokenPurchased, TokenSold, CurveCompleted
 };
 
 #[account]
@@ -107,12 +107,6 @@ impl<'info> BondingCurve {
         //Update reserves on the curve
         self.update_reserves(new_sol_reserves, new_token_reserves)?;
 
-        //Return true if curve reached its limit
-        if new_sol_reserves >= curve_limit {
-            self.is_completed = true;
-            return Ok(true);
-        }
-
         emit!(TokenPurchased {
             token_mint: token_mint.key(),
             buyer: user.key(),
@@ -121,6 +115,18 @@ impl<'info> BondingCurve {
             fee_amount: fee_amount,
             price: new_sol_reserves / new_token_reserves
         });
+
+        //Return true if curve reached its limit
+        if new_sol_reserves >= curve_limit {
+            self.is_completed = true;
+            emit!(CurveCompleted {
+                token_mint: token_mint.key(),
+                final_sol_reserve: new_sol_reserves,
+                final_token_reserve: new_token_reserves,
+            });
+            return Ok(true);
+        }
+
         //Return false if curve did not reach its limit
         Ok(false)
     }

@@ -1,12 +1,11 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{Token, TokenAccount, Mint};
-use anchor_spl::token_interface::{TokenInterface};
 use crate::states::{BondingCurve, Config};
 use crate::errors::SwifeyError;
 use crate::utils::{sol_transfer_with_signer, token_transfer_with_signer, MigrationCompleted};
 use raydium_amm_v3::{
     self,
-    states::{PoolState, AmmConfig, POOL_SEED, POOL_TICK_ARRAY_BITMAP_SEED, POOL_VAULT_SEED},
+    states::{AmmConfig, POOL_SEED, POOL_TICK_ARRAY_BITMAP_SEED, POOL_VAULT_SEED},
     program::AmmV3,
     libraries::tick_math,
 };
