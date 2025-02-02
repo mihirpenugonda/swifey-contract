@@ -62,6 +62,6 @@ pub enum SwifeyError {
     #[msg("Invalid curve limit - must be exactly 42 SOL")]
     InvalidCurveLimit,
 
-    #[msg("Invalid initial SOL reserve - must be exactly 10.5 SOL")]
+    #[msg("Invalid initial SOL reserve - must be exactly 12.33 SOL")]
     InvalidInitialSolReserve,
 }

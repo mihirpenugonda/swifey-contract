@@ -46,7 +46,7 @@ impl<'info> Configure<'info> {
 
         // Verify curve parameters for 42 SOL target
         const TARGET_SOL: u64 = 42_000_000_000; // 42 SOL in lamports
-        const INITIAL_SOL: u64 = 10_500_000_000; // 10.5 SOL in lamports
+        const INITIAL_SOL: u64 = 12_330_000_000; // 12.33 SOL in lamports
 
         require!(
             new_config.curve_limit == TARGET_SOL,
