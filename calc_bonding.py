@@ -46,8 +46,8 @@ def calculate_bonding_curve(initial_sol_amount, target_sol_amount, crr, total_to
     print("SOL Amount | Tokens Sold | % of Total | Price (SOL) | Price ($) | % Price Incr.")
     print("-" * 70)
     
-    # Calculate distribution at key SOL levels
-    key_percentages = [0, 25, 50, 75, 100]  # 0%, 25%, 50%, 75%, 100% of the way
+    # Calculate distribution at key SOL levels with 10% more granularity
+    key_percentages = [i for i in range(0, 101, 10)]  # 0%, 10%, 20%, ..., 100%
     sol_levels = [initial_sol_amount + (target_sol_amount - initial_sol_amount) * (p/100) for p in key_percentages]
     
     initial_price_lamports = initial_price
