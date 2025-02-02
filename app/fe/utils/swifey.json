@@ -497,6 +497,26 @@
   ],
   "events": [
     {
+      "name": "CurveCompleted",
+      "fields": [
+        {
+          "name": "tokenMint",
+          "type": "publicKey",
+          "index": false
+        },
+        {
+          "name": "finalSolReserve",
+          "type": "u64",
+          "index": false
+        },
+        {
+          "name": "finalTokenReserve",
+          "type": "u64",
+          "index": false
+        }
+      ]
+    },
+    {
       "name": "MigrationCompleted",
       "fields": [
         {
@@ -586,26 +606,6 @@
         },
         {
           "name": "price",
-          "type": "u64",
-          "index": false
-        }
-      ]
-    },
-    {
-      "name": "CurveCompleted",
-      "fields": [
-        {
-          "name": "tokenMint",
-          "type": "publicKey",
-          "index": false
-        },
-        {
-          "name": "finalSolReserve",
-          "type": "u64",
-          "index": false
-        },
-        {
-          "name": "finalTokenReserve",
           "type": "u64",
           "index": false
         }
@@ -718,5 +718,8 @@
       "name": "InvalidInitialSolReserve",
       "msg": "Invalid initial SOL reserve - must be exactly 10.5 SOL"
     }
-  ]
+  ],
+  "metadata": {
+    "address": "F2gshyHa8WtpeCMmqffZDuRKUUVNc9Cnf7LaKf8kNMC"
+  }
 }

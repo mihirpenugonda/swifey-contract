@@ -20,11 +20,19 @@ pub struct Configure<'info> {
 }
 
 impl<'info> Configure<'info> {
-    pub fn process(&mut self, new_config: Config) -> Result<()> {
-        // Verify authority if already initialized    
-        if !self.global_config.authority.eq(&Pubkey::default()) {
+    pub fn process(&mut self, mut new_config: Config) -> Result<()> {
+        // If config is not initialized, set the admin as the authority
+        if self.global_config.authority.eq(&Pubkey::default()) {
+            new_config.authority = self.admin.key();
+        } else {
+            // If already initialized, verify the signer is the current authority
             require!(
-                self.global_config.authority.eq(&self.admin.key()),
+                self.global_config.is_authorized(&self.admin.key()),
+                SwifeyError::UnauthorizedAddress
+            );
+            // Ensure authority cannot be changed from original creator
+            require!(
+                new_config.authority.eq(&self.global_config.authority),
                 SwifeyError::UnauthorizedAddress
             );
         }
@@ -48,6 +56,13 @@ impl<'info> Configure<'info> {
         require!(
             new_config.initial_virtual_sol_reserve == INITIAL_SOL,
             SwifeyError::InvalidInitialSolReserve
+        );
+
+        // Verify at least one authority is set
+        require!(
+            !new_config.authority.eq(&Pubkey::default()) || 
+            new_config.authorities.iter().any(|a| !a.eq(&Pubkey::default())),
+            SwifeyError::UnauthorizedAddress
         );
 
         self.global_config.set_inner(new_config);

@@ -2,7 +2,8 @@ use anchor_lang::prelude::*;
 
 #[account]
 pub struct Config {
-    pub authority: Pubkey, // Authority address
+    pub authority: Pubkey, // Primary authority address
+    pub authorities: [Pubkey; 5], // Additional authorized addresses
     pub fee_recipient: Pubkey, // Team wallet address
     pub curve_limit: u64, // Lamports to complete the bonding curve
 
@@ -22,5 +23,12 @@ pub struct Config {
 
 impl Config {
     pub const SEED_PREFIX: &'static str = "global_config";
-    pub const LEN: usize = 32 + 32 + 8 + (8 * 4) + (8 * 3) + 64;
+    pub const LEN: usize = 32 + (32 * 5) + 32 + 8 + (8 * 4) + (8 * 3) + 64;
+
+    pub fn is_authorized(&self, key: &Pubkey) -> bool {
+        if self.authority == *key {
+            return true;
+        }
+        self.authorities.contains(key)
+    }
 }
