@@ -128,7 +128,7 @@ impl<'info> Migrate<'info> {
         
         // Verify authority
         require!(
-            config.is_authorized(&ctx.accounts.authority.key()),
+            config.authority == ctx.accounts.authority.key(),
             SwifeyError::UnauthorizedAddress
         );
 

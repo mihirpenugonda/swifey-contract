@@ -9,13 +9,13 @@ pub mod utils;
 use crate::instructions::*;
 use crate::states::*;
 
-declare_id!("8K85SmcVXS59QMf4uESEPggxQtdrz3dkES3qLHREYx6z");
+declare_id!("J44wGWnyyK7CcySirB3FEfjdtKY6RrUuNJnkBmuHkzvf");
 
 #[program]
 pub mod swifey {
     use super::*;
 
-    pub fn configure(ctx: Context<Configure>, new_config: Config) -> Result<()> {
+    pub fn configure(ctx: Context<Configure>, new_config: ConfigSettings) -> Result<()> {
         ctx.accounts.process(new_config)
     }
 

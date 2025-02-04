@@ -1,4 +1,4 @@
-use crate::{errors::SwifeyError, states::Config};
+use crate::{errors::SwifeyError, states::{Config, ConfigSettings}};
 use anchor_lang::{prelude::*, system_program};
 
 #[derive(Accounts)]
@@ -20,14 +20,14 @@ pub struct Configure<'info> {
 }
 
 impl<'info> Configure<'info> {
-    pub fn process(&mut self, mut new_config: Config) -> Result<()> {
+    pub fn process(&mut self, new_config: ConfigSettings) -> Result<()> {
         // If config is not initialized, set the admin as the authority
         if self.global_config.authority.eq(&Pubkey::default()) {
-            new_config.authority = self.admin.key();
+            self.global_config.authority = self.admin.key();
         } else {
             // If already initialized, verify the signer is the current authority
             require!(
-                self.global_config.is_authorized(&self.admin.key()),
+                self.global_config.authority == self.admin.key(),
                 SwifeyError::UnauthorizedAddress
             );
             // Ensure authority cannot be changed from original creator
@@ -37,35 +37,24 @@ impl<'info> Configure<'info> {
             );
         }
 
-        // Verify that 80% of total supply is allocated to bonding curve
-        let required_curve_supply = (new_config.total_token_supply as f64 * 0.8) as u64;
         require!(
-            new_config.initial_virtual_token_reserve >= required_curve_supply,
-            SwifeyError::InvalidTokenAllocation
-        );
-
-        // Verify curve parameters for 42 SOL target
-        const TARGET_SOL: u64 = 42_000_000_000; // 42 SOL in lamports
-        const INITIAL_SOL: u64 = 12_330_000_000; // 12.33 SOL in lamports
-
-        require!(
-            new_config.curve_limit == TARGET_SOL,
-            SwifeyError::InvalidCurveLimit
-        );
-
-        require!(
-            new_config.initial_virtual_sol_reserve == INITIAL_SOL,
-            SwifeyError::InvalidInitialSolReserve
-        );
-
-        // Verify at least one authority is set
-        require!(
-            !new_config.authority.eq(&Pubkey::default()) || 
-            new_config.authorities.iter().any(|a| !a.eq(&Pubkey::default())),
+            !new_config.authority.eq(&Pubkey::default()),
             SwifeyError::UnauthorizedAddress
         );
 
-        self.global_config.set_inner(new_config);
+        // Copy all fields from ConfigSettings to Config
+        self.global_config.authority = new_config.authority;
+        self.global_config.fee_recipient = new_config.fee_recipient;
+        self.global_config.curve_limit = new_config.curve_limit;
+        self.global_config.initial_virtual_token_reserve = new_config.initial_virtual_token_reserve;
+        self.global_config.initial_virtual_sol_reserve = new_config.initial_virtual_sol_reserve;
+        self.global_config.initial_real_token_reserve = new_config.initial_real_token_reserve;
+        self.global_config.total_token_supply = new_config.total_token_supply;
+        self.global_config.buy_fee_percentage = new_config.buy_fee_percentage;
+        self.global_config.sell_fee_percentage = new_config.sell_fee_percentage;
+        self.global_config.migration_fee_percentage = new_config.migration_fee_percentage;
+        self.global_config.reserved = new_config.reserved;
+
         Ok(())
     }
 }

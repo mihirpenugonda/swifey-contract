@@ -5,7 +5,7 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-swifey = "ANuqfyR8ETpfr1EhZ7ZbqDo1p53qoP6X6bykC168Gaa4"
+swifey = "J44wGWnyyK7CcySirB3FEfjdtKY6RrUuNJnkBmuHkzvf"
 
 [registry]
 url = "https://api.apr.dev"
