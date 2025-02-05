@@ -9,7 +9,7 @@ pub mod utils;
 use crate::instructions::*;
 use crate::states::*;
 
-declare_id!("J44wGWnyyK7CcySirB3FEfjdtKY6RrUuNJnkBmuHkzvf");
+declare_id!("ArsbvSmUJnxW3Ec2sJSq2urmTrVJxefpUtvPBFYLPKgY");
 
 #[program]
 pub mod swifey {
@@ -28,11 +28,10 @@ pub mod swifey {
     }
 
     pub fn swap<'info>(ctx: Context<'_, '_, '_, 'info, Swap<'info>>, amount: u64, direction: u8, min_out: u64) -> Result<()> {
-        ctx.accounts.process(amount, direction, min_out, ctx.bumps.bonding_curve)
+        instructions::swap(ctx, amount, direction, min_out)
     }
 
     pub fn migrate(ctx: Context<Migrate>) -> Result<()> {
         Migrate::process(ctx)
     }
-
 }

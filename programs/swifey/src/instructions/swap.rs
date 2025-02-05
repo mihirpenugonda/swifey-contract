@@ -1,6 +1,6 @@
 use crate::{
     errors::SwifeyError,
-    states::{BondingCurve, Config},
+    states::{BondingCurve, Config}, utils::{CurveCompleted, TokenPurchased, TokenSold},
 };
 
 use anchor_lang::{prelude::*, system_program};
@@ -10,6 +10,77 @@ use anchor_spl::{
     token::{self, Mint, Token, TokenAccount},
 };
 
+pub fn swap(ctx: Context<Swap>, amount: u64, direction: u8, min_out: u64) -> Result<()> {
+    let bonding_curve = &mut ctx.accounts.bonding_curve;
+    
+    require!(bonding_curve.is_completed == false, SwifeyError::CurveLimitReached);
+
+    require!(direction == 0 || direction == 1, SwifeyError::InvalidDirection);
+
+    let curve_pda = &mut bonding_curve.to_account_info();
+    let global_config = &ctx.accounts.global_config;
+
+    if direction == 0 {
+        let (amount_in, amount_out, fee_amount, new_sol_reserves, new_token_reserves, is_completed) = bonding_curve.buy(
+            &ctx.accounts.token_mint,
+            global_config.curve_limit,
+            &ctx.accounts.user,
+            curve_pda,
+            &mut ctx.accounts.fee_recipient,
+            &mut ctx.accounts.user_token_account.to_account_info(),
+            &mut ctx.accounts.curve_token_account.to_account_info(),
+            amount,
+            min_out,
+            global_config.buy_fee_percentage,
+            ctx.bumps.bonding_curve,
+            &ctx.accounts.system_program.to_account_info(),
+            &ctx.accounts.token_program.to_account_info()
+        )?;
+
+        if is_completed {
+            emit_cpi!(CurveCompleted {
+                token_mint: ctx.accounts.token_mint.key(),
+                final_sol_reserve: new_sol_reserves,
+                final_token_reserve: new_token_reserves,
+            });
+        }
+
+        emit_cpi!(TokenPurchased {
+            token_mint: ctx.accounts.token_mint.key(),
+            buyer: ctx.accounts.user.key(),
+            sol_amount: amount_in,
+            token_amount: amount_out,
+            fee_amount: fee_amount,
+            price: new_sol_reserves / new_token_reserves
+        });
+    } else if direction == 1 {
+        let (amount_in, amount_out, fee_amount, price) = bonding_curve.sell(
+            &ctx.accounts.token_mint,
+            &ctx.accounts.user,
+            curve_pda,
+            &mut ctx.accounts.user_token_account.to_account_info(),
+            &mut ctx.accounts.fee_recipient,
+            &mut ctx.accounts.curve_token_account.to_account_info(),
+            amount,
+            min_out,
+            global_config.sell_fee_percentage,
+            ctx.bumps.bonding_curve,
+            &ctx.accounts.system_program.to_account_info(),
+            &ctx.accounts.token_program.to_account_info()
+        )?;
+
+        emit_cpi!(TokenSold {
+            token_mint: ctx.accounts.token_mint.key(),
+            sol_amount: amount_in,
+            token_amount: amount_out,
+            fee_amount: fee_amount,
+            price: price
+        });
+    }
+    Ok(())
+}
+
+#[event_cpi]
 #[derive(Accounts)]
 pub struct Swap<'info> {
     #[account(mut)]
@@ -39,49 +110,4 @@ pub struct Swap<'info> {
     associated_token_program: Program<'info, AssociatedToken>,
     #[account(address = system_program::ID)]
     system_program: Program<'info, System>,
-}
-
-impl<'info> Swap<'info> {
-    pub fn process(&mut self, amount: u64, direction: u8, min_out: u64, bump_bonding_curve: u8) -> Result<()> {
-        let bonding_curve = &mut self.bonding_curve;
-        require!(bonding_curve.is_completed == false, SwifeyError::CurveLimitReached);
-
-        let curve_pda = &mut bonding_curve.to_account_info();
-        let global_config: &Box<Account<'info, Config>> = &self.global_config;
-
-        if direction == 0 {
-            bonding_curve.buy(
-                &self.token_mint,
-                global_config.curve_limit,
-                &self.user,
-                curve_pda,
-                &mut self.fee_recipient,
-                &mut self.user_token_account.to_account_info(),
-                &mut self.curve_token_account.to_account_info(),
-                amount,
-                min_out,
-                global_config.buy_fee_percentage,
-                bump_bonding_curve,
-                &self.system_program.to_account_info(),
-                &self.token_program.to_account_info()
-            )?;
-        } else if direction == 1 {
-            //  sell - swap token for sol
-            bonding_curve.sell(
-                &self.token_mint,
-                &self.user,
-                curve_pda,
-                &mut self.user_token_account.to_account_info(),
-                &mut self.fee_recipient,
-                &mut self.curve_token_account.to_account_info(),
-                amount,
-                min_out,
-                global_config.sell_fee_percentage,
-                bump_bonding_curve,
-                &self.system_program.to_account_info(),
-                &self.token_program.to_account_info()
-            )?;
-        }
-        Ok(())
-    }
 }

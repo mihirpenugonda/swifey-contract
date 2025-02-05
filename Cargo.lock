@@ -1662,7 +1662,7 @@ dependencies = [
 [[package]]
 name = "raydium-amm-v3"
 version = "0.1.0"
-source = "git+https://github.com/raydium-io/raydium-amm-v3#73ad95b4442d0fec99c655ddf0286a8340e31e72"
+source = "git+https://github.com/raydium-io/raydium-amm-v3#da030ba26ecce4a9de9a64e4446dd93e7befac3d"
 dependencies = [
  "anchor-lang",
  "anchor-spl",

@@ -67,7 +67,7 @@ impl<'info> BondingCurve {
         curve_bump: u8,                     // Bump for the bonding curve PDA
         system_program: &AccountInfo<'info>, // System program
         token_program: &AccountInfo<'info>,
-    ) -> Result<bool> {
+    ) -> Result<(u64, u64, u64, u64, u64, bool)> {
         let (amount_out, fee_amount) =
             self.calculate_amount_out(amount_in, 0, fee_percentage)?;
 
@@ -124,11 +124,11 @@ impl<'info> BondingCurve {
                 final_sol_reserve: new_sol_reserves,
                 final_token_reserve: new_token_reserves,
             });
-            return Ok(true);
+            return Ok((amount_in, amount_out, fee_amount, new_sol_reserves / new_token_reserves, new_token_reserves, true));
         }
 
-        //Return false if curve did not reach its limit
-        Ok(false)
+        //Return data if curve did not reach its limit
+        Ok((amount_in, amount_out, fee_amount, new_sol_reserves / new_token_reserves, new_token_reserves, false))
     }
 
     // Swap tokens for sol
@@ -146,7 +146,7 @@ impl<'info> BondingCurve {
         curve_bump: u8,
         system_program: &AccountInfo<'info>,
         token_program: &AccountInfo<'info>,
-    ) -> Result<()> {
+    ) -> Result<(u64, u64, u64, u64)> {
         let (amount_out, fee_amount) =
             self.calculate_amount_out(amount_in, 1, fee_percentage)?;
 
@@ -167,7 +167,7 @@ impl<'info> BondingCurve {
             signer_seeds,
             amount_out - fee_amount,
         )?;
-        
+
         sol_transfer_with_signer(
             curve_pda, 
             fee_recipient,
@@ -196,7 +196,7 @@ impl<'info> BondingCurve {
             price: new_sol_reserves / new_token_reserves
         });
         
-        Ok(())
+        Ok((amount_in, amount_out, fee_amount, new_sol_reserves / new_token_reserves))
     }
 
     //Calculate adjusted amount out and fee amount
@@ -215,7 +215,7 @@ impl<'info> BondingCurve {
         let virtual_token = self.virtual_token_reserve as f64;
         let amount_after_fee = amount_after_fee as f64;
 
-        const CRR: f64 = 0.2;
+        const CRR: f64 = 0.6051;
 
         let amount_out = if direction == 0 {
             require!(virtual_sol > 0.0, SwifeyError::DivisionByZero);

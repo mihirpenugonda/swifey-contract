@@ -64,4 +64,7 @@ pub enum SwifeyError {
 
     #[msg("Invalid initial SOL reserve - must be exactly 12.33 SOL")]
     InvalidInitialSolReserve,
+
+    #[msg("Invalid direction")]
+    InvalidDirection,
 }

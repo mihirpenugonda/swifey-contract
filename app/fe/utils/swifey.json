@@ -25,7 +25,7 @@
         {
           "name": "newConfig",
           "type": {
-            "defined": "Config"
+            "defined": "ConfigSettings"
           }
         }
       ]
@@ -154,6 +154,16 @@
         },
         {
           "name": "systemProgram",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "eventAuthority",
+          "isMut": false,
+          "isSigner": false
+        },
+        {
+          "name": "program",
           "isMut": false,
           "isSigner": false
         }
@@ -436,7 +446,7 @@
   ],
   "types": [
     {
-      "name": "Config",
+      "name": "ConfigSettings",
       "type": {
         "kind": "struct",
         "fields": [
@@ -716,10 +726,12 @@
     {
       "code": 6020,
       "name": "InvalidInitialSolReserve",
-      "msg": "Invalid initial SOL reserve - must be exactly 10.5 SOL"
+      "msg": "Invalid initial SOL reserve - must be exactly 12.33 SOL"
+    },
+    {
+      "code": 6021,
+      "name": "InvalidDirection",
+      "msg": "Invalid direction"
     }
-  ],
-  "metadata": {
-    "address": "F2gshyHa8WtpeCMmqffZDuRKUUVNc9Cnf7LaKf8kNMC"
-  }
+  ]
 }
