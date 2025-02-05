@@ -208,27 +208,47 @@ impl<'info> BondingCurve {
         direction: u8,
         fee_percentage: f64,    
     ) -> Result<(u64, u64)> {
+        // Convert to f64 for precision calculations
         let virtual_sol = self.virtual_sol_reserve as f64;
         let virtual_token = self.virtual_token_reserve as f64;
+        let amount_in = amount_in as f64;
 
         const CRR: f64 = 0.6051;
+        const LAMPORTS_PER_SOL: f64 = 1_000_000_000.0;
 
-        let amount_out = if direction == 0 {
+        // Calculate amount out using bonding curve formula
+        let amount_out = if direction == 0 { // Buying tokens
             require!(virtual_sol > 0.0, SwifeyError::DivisionByZero);
-            let base = 1.0 + amount_in as f64 / virtual_sol;
-            virtual_token * (base.powf(CRR) - 1.0)
-        } else {
+            
+            // Convert everything to SOL (not lamports) for calculation
+            let current_sol = virtual_sol / LAMPORTS_PER_SOL;
+            let sol_in = amount_in / LAMPORTS_PER_SOL;
+            let new_sol = current_sol + sol_in;
+            
+            // Exactly match Python calculation
+            let ratio = (new_sol/current_sol).powf(CRR);
+            let tokens_out = virtual_token * (1.0 - 1.0/ratio);
+            
+            tokens_out
+        } else { // Selling tokens
             require!(virtual_token > 0.0, SwifeyError::DivisionByZero);
-            let base = 1.0 - amount_in as f64 / virtual_token;
-            virtual_sol * (1.0 - base.powf(1.0 / CRR))
+            
+            // For selling, use the inverse formula
+            let new_virtual_token = virtual_token + amount_in;
+            let ratio = (new_virtual_token/virtual_token).powf(1.0/CRR);
+            let sol_out = virtual_sol * (1.0 - 1.0/ratio);
+            
+            sol_out
         };
 
+        // Floor the result and convert back to u64
         let final_amount = amount_out.floor() as u64;
 
+        // Calculate fee amount
         let fee_amount = if direction == 0 {
-            (amount_in as f64 * fee_percentage / 100.0) as u64
+            ((amount_in * fee_percentage) / 100.0).floor() as u64
         } else {
-            (final_amount as f64 * fee_percentage / 100.0) as u64
+            ((final_amount as f64 * fee_percentage) / 100.0).floor() as u64
         };
 
         Ok((final_amount, fee_amount))

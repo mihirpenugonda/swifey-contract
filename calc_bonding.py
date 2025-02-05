@@ -65,10 +65,11 @@ def calculate_bonding_curve(initial_sol_amount, target_sol_amount, crr, total_to
 if __name__ == "__main__":
     # Example usage with current parameters
     TOTAL_TOKENS = 1_000_000_000
-    INITIAL_SOL = 10.5
+    INITIAL_SOL = 5
     TARGET_SOL = 72
-    CRR = 0.72
+    CRR = 0.6051
     
+    print("\nTest Case 1: Current Parameters")
     calculate_bonding_curve(INITIAL_SOL, TARGET_SOL, CRR, TOTAL_TOKENS)
     
     # Uncomment to try different parameters

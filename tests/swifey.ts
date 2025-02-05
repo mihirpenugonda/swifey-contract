@@ -97,22 +97,17 @@ describe("swifey", () => {
   describe("basic operations", () => {
     it("Can configure program settings", async () => {
       try {
-        // Token supply calculations
-        const BASE_SUPPLY = new BN("1000000000");
+        // Token supply calculations - matching Python script
+        const BASE_SUPPLY = new BN("1000000000"); // 1 billion total tokens
         const DECIMALS = new BN(6);
-        const TOTAL_SUPPLY = BASE_SUPPLY.mul(new BN(10).pow(DECIMALS));
+        const TOTAL_SUPPLY = BASE_SUPPLY.mul(new BN(10).pow(DECIMALS)); // 1B with decimals
 
-        // Must allocate at least 80% to bonding curve
-        const VIRTUAL_RESERVE = BASE_SUPPLY.muln(8).divn(10); // 80% allocation
-        const VIRTUAL_RESERVE_WITH_DECIMALS = VIRTUAL_RESERVE.mul(
-          new BN(10).pow(DECIMALS)
-        );
+        // Initial SOL and curve limit (adjusting initial SOL to get 80% distribution)
+        const INITIAL_SOL = new BN(1.8 * anchor.web3.LAMPORTS_PER_SOL); // Reduced from 5 to 3.6 SOL initial
+        const CURVE_LIMIT = new BN(64 * anchor.web3.LAMPORTS_PER_SOL); // Adjusted from 72 to 62 SOL target
 
-        // SOL amounts
-        const INITIAL_SOL = new BN(12.33 * anchor.web3.LAMPORTS_PER_SOL);
-        const CURVE_LIMIT = new BN(42).mul(
-          new BN(anchor.web3.LAMPORTS_PER_SOL)
-        );
+        // Use the full supply for virtual reserves
+        const VIRTUAL_RESERVE = TOTAL_SUPPLY; // Using full 1B supply
 
         // Create the correct nested array structure for reserved
         const reserved = Array(8)
@@ -123,7 +118,7 @@ describe("swifey", () => {
           authority: creator.publicKey,
           feeRecipient: creator.publicKey,
           curveLimit: CURVE_LIMIT,
-          initialVirtualTokenReserve: VIRTUAL_RESERVE_WITH_DECIMALS,
+          initialVirtualTokenReserve: VIRTUAL_RESERVE,
           initialVirtualSolReserve: INITIAL_SOL,
           initialRealTokenReserve: new BN(0),
           totalTokenSupply: TOTAL_SUPPLY,
@@ -314,30 +309,6 @@ describe("swifey", () => {
         // Buy tokens
         const buyAmount = new BN(1 * anchor.web3.LAMPORTS_PER_SOL);
 
-        // Create ATA first
-        try {
-          const createAtaIx = createAssociatedTokenAccountInstruction(
-            user.publicKey,
-            userTokenAccount,
-            user.publicKey,
-            tokenMint
-          );
-
-          const createAtaTx = new Transaction().add(createAtaIx);
-          const ataTxHash = await provider.connection.getLatestBlockhash(
-            "confirmed"
-          );
-          createAtaTx.feePayer = user.publicKey;
-          createAtaTx.recentBlockhash = ataTxHash.blockhash;
-
-          await provider.connection.sendTransaction(createAtaTx, [user], {
-            preflightCommitment: "confirmed",
-          });
-          console.log("Created user token account");
-        } catch (e) {
-          console.log("User token account might already exist");
-        }
-
         // Buy transaction
         const buyTx = await program.methods
           .swap(buyAmount, 0, new BN(0))
@@ -506,7 +477,7 @@ describe("swifey", () => {
         // Get transaction logs
         const txLogs = await provider.connection.getTransaction(sellSignature, {
           maxSupportedTransactionVersion: 0,
-          commitment: "confirmed"
+          commitment: "confirmed",
         });
         console.log("\n=== Transaction Logs ===");
         txLogs?.meta?.logMessages?.forEach((log, i) => {
@@ -538,6 +509,232 @@ describe("swifey", () => {
           console.error("Failed Instruction Data:", error.instructionData);
         }
 
+        throw error;
+      }
+    });
+
+    it("Can purchase maximum tokens at curve limit", async () => {
+      try {
+        console.log("\n=== Starting Maximum Purchase Test ===");
+
+        // Create a new user with enough SOL
+        const whaleUser = Keypair.generate();
+
+        // Airdrop enough SOL to cover the maximum purchase
+        const airdropAmount = 100; // Airdrop 100 SOL to be safe
+        await provider.connection.requestAirdrop(
+          whaleUser.publicKey,
+          airdropAmount * anchor.web3.LAMPORTS_PER_SOL
+        );
+
+        // Print global config details
+        let globalConfig = await program.account.config.fetch(configPda);
+        console.log("\n=== Global Config Details ===");
+        console.log("Authority:", globalConfig.authority.toString());
+        console.log("Curve Limit:", globalConfig.curveLimit.toString());
+        console.log(
+          "Initial Virtual Token Reserve:",
+          globalConfig.initialVirtualTokenReserve.toString()
+        );
+        console.log(
+          "Initial Virtual SOL Reserve:",
+          globalConfig.initialVirtualSolReserve.toString()
+        );
+        console.log(
+          "Initial Real Token Reserve:",
+          globalConfig.initialRealTokenReserve.toString()
+        );
+        console.log(
+          "Total Token Supply:",
+          globalConfig.totalTokenSupply.toString()
+        );
+
+        // Wait for airdrop confirmation
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+
+        // Get PDAs and accounts
+        const [bondingCurvePda] = PublicKey.findProgramAddressSync(
+          [Buffer.from("bonding_curve"), tokenMint.toBuffer()],
+          program.programId
+        );
+
+        let bondingCurveAccount = await provider.connection.getAccountInfo(
+          bondingCurvePda
+        );
+        if (!bondingCurveAccount) {
+          throw new Error("Bonding curve not initialized for this token");
+        }
+
+        const config = await program.account.config.fetch(configPda);
+        const feeRecipientPda = config.feeRecipient;
+
+        const curveTokenAccount = await getAssociatedTokenAddress(
+          tokenMint,
+          bondingCurvePda,
+          true
+        );
+
+        const whaleTokenAccount = await getAssociatedTokenAddress(
+          tokenMint,
+          whaleUser.publicKey
+        );
+
+        // Buy at curve limit
+        const buyAmount = new BN(60 * anchor.web3.LAMPORTS_PER_SOL);
+
+        console.log(buyAmount, "Buyamount");
+
+        const tx = await program.methods
+          .swap(buyAmount, 0, new BN(0))
+          .accounts({
+            user: whaleUser.publicKey,
+            globalConfig: configPda,
+            feeRecipient: feeRecipientPda,
+            bondingCurve: bondingCurvePda,
+            tokenMint: tokenMint,
+            curveTokenAccount: curveTokenAccount,
+            userTokenAccount: whaleTokenAccount,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
+          })
+          .signers([whaleUser])
+          .transaction();
+
+        const latestBlockhash = await provider.connection.getLatestBlockhash();
+        tx.feePayer = whaleUser.publicKey;
+        tx.recentBlockhash = latestBlockhash.blockhash;
+
+        console.log("Sending maximum buy transaction...");
+        const signature = await provider.connection.sendTransaction(
+          tx,
+          [whaleUser],
+          {
+            skipPreflight: true,
+            preflightCommitment: "confirmed",
+          }
+        );
+
+        const confirmation = await provider.connection.confirmTransaction({
+          signature,
+          blockhash: latestBlockhash.blockhash,
+          lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+        });
+
+        console.log("confirmation", confirmation);
+        if (confirmation.value.err) {
+          // Get detailed logs for the failed transaction
+          const txDetails = await provider.connection.getTransaction(
+            signature,
+            {
+              commitment: "confirmed",
+              maxSupportedTransactionVersion: 0,
+            }
+          );
+          console.error("\n=== Transaction Error Details ===");
+          console.error("Signature:", signature);
+          console.error("Error:", confirmation.value.err);
+          console.error("\nTransaction Logs:");
+          if (txDetails?.meta?.logMessages) {
+            txDetails.meta.logMessages.forEach((log, i) => {
+              console.error(`${i}: ${log}`);
+            });
+          }
+          console.error("\nSignature:", signature);
+          console.error("Error:", confirmation.value.err);
+          throw new Error("Transaction failed with logs above");
+        }
+
+        // Get and log whale's token balance
+        const whaleTokenBalance =
+          await provider.connection.getTokenAccountBalance(whaleTokenAccount);
+
+        console.log("\n=== Maximum Buy Results ===");
+        console.log("Tokens received:", whaleTokenBalance.value.amount);
+        console.log(
+          "Tokens received (in millions):",
+          Number(whaleTokenBalance.value.amount) / 1_000_000
+        );
+        console.log(
+          "Percentage of total allocation:",
+          (Number(whaleTokenBalance.value.amount) /
+            (1_000_000_000 * 1_000_000)) *
+            100,
+          "%"
+        );
+
+        bondingCurveAccount = await provider.connection.getAccountInfo(
+          bondingCurvePda
+        );
+        console.log("\n=== Bonding Curve Details ===");
+        if (bondingCurveAccount) {
+          const bondingCurveData = program.coder.accounts.decode(
+            "BondingCurve",
+            bondingCurveAccount.data
+          );
+          console.log(
+            "Virtual Token Reserve:",
+            (
+              Number(bondingCurveData.virtualTokenReserve) / 1_000_000
+            ).toLocaleString(),
+            "tokens"
+          );
+          console.log(
+            "Virtual SOL Reserve:",
+            (
+              Number(bondingCurveData.virtualSolReserve) /
+              anchor.web3.LAMPORTS_PER_SOL
+            ).toLocaleString(),
+            "SOL"
+          );
+          console.log(
+            "Real Token Reserve:",
+            (
+              Number(bondingCurveData.realTokenReserve) / 1_000_000
+            ).toLocaleString(),
+            "tokens"
+          );
+          console.log(
+            "Real SOL Reserve:",
+            (
+              Number(bondingCurveData.realSolReserve) /
+              anchor.web3.LAMPORTS_PER_SOL
+            ).toLocaleString(),
+            "SOL"
+          );
+          console.log(
+            "Token Total Supply:",
+            (
+              Number(bondingCurveData.tokenTotalSupply) / 1_000_000
+            ).toLocaleString(),
+            "tokens"
+          );
+          console.log("Is Completed:", bondingCurveData.isCompleted);
+          console.log("Is Migrated:", bondingCurveData.isMigrated);
+        } else {
+          console.log("Bonding curve account not found");
+        }
+
+        // Verify the amount is close to 800M tokens (accounting for decimals)
+        const expectedTokens = 800_000_000 * 1_000_000; // 800M with 6 decimals
+        const receivedTokens = Number(whaleTokenBalance.value.amount);
+        const tolerance = 0.01; // 1% tolerance
+
+        const percentDifference = Math.abs(
+          (receivedTokens - expectedTokens) / expectedTokens
+        );
+
+        expect(percentDifference).to.be.lessThan(tolerance);
+        console.log("Token amount verification passed within 1% tolerance");
+      } catch (error) {
+        console.error("\n=== Transaction Error ===");
+        console.error("Error:", error);
+        if (error.logs) {
+          console.error("\nTransaction Logs:");
+          error.logs.forEach((log: string) => {
+            console.error(log);
+          });
+        }
         throw error;
       }
     });
