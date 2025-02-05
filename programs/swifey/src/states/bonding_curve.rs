@@ -131,7 +131,7 @@ impl<'info> BondingCurve {
         Ok((amount_in, amount_out, fee_amount, new_sol_reserves / new_token_reserves, new_token_reserves, false))
     }
 
-    // Swap tokens for sol
+  // Swap tokens for sol
     pub fn sell(
         &mut self,
         token_mint: &Account<'info, Mint>,
@@ -149,7 +149,7 @@ impl<'info> BondingCurve {
     ) -> Result<(u64, u64, u64, u64)> {
         let (amount_out, fee_amount) =
             self.calculate_amount_out(amount_in, 1, fee_percentage)?;
-
+        
         require!(
             amount_out >= min_amount_out,
             SwifeyError::InsufficientAmountOut
@@ -157,6 +157,28 @@ impl<'info> BondingCurve {
 
         let token = token_mint.key();
         let signer_seeds: &[&[&[u8]]] = &[&BondingCurve::get_signer(&token, &curve_bump)];
+
+        // Calculate new reserves before transfers
+        let new_token_reserves = self
+            .virtual_token_reserve
+            .checked_add(amount_in)
+            .ok_or(SwifeyError::InvalidReserves)?;
+
+        let new_sol_reserves = self
+            .virtual_sol_reserve
+            .checked_sub(amount_out)
+            .ok_or(SwifeyError::InvalidReserves)?;
+
+        // Verify we have enough SOL in the PDA
+        let pda_sol_balance = curve_pda.lamports();
+
+        require!(
+            pda_sol_balance >= amount_out,
+            SwifeyError::InsufficientSolBalance
+        );
+
+        // Update reserves first
+        self.update_reserves(new_sol_reserves, new_token_reserves)?;
 
         token_transfer_user(user_ata, curve_ata, user, token_program, amount_in)?;
 
@@ -176,26 +198,6 @@ impl<'info> BondingCurve {
             fee_amount,
         )?;
 
-        let new_token_reserves = self
-            .virtual_token_reserve
-            .checked_add(amount_in) 
-            .ok_or(SwifeyError::InvalidReserves)?;
-
-        let new_sol_reserves = self
-            .virtual_sol_reserve
-            .checked_sub(amount_out)
-            .ok_or(SwifeyError::InvalidReserves)?;
-
-        self.update_reserves(new_sol_reserves, new_token_reserves)?;
-
-        emit!(TokenSold {
-            token_mint: token_mint.key(),
-            sol_amount: amount_in,
-            token_amount: amount_out,
-            fee_amount: fee_amount,
-            price: new_sol_reserves / new_token_reserves
-        });
-        
         Ok((amount_in, amount_out, fee_amount, new_sol_reserves / new_token_reserves))
     }
 
@@ -206,28 +208,28 @@ impl<'info> BondingCurve {
         direction: u8,
         fee_percentage: f64,    
     ) -> Result<(u64, u64)> {
-        let fee_amount = (amount_in as f64 * fee_percentage / 100.0) as u64;
-        let amount_after_fee = amount_in
-            .checked_sub(fee_amount)
-            .ok_or(SwifeyError::InsufficientFunds)?;
-
         let virtual_sol = self.virtual_sol_reserve as f64;
         let virtual_token = self.virtual_token_reserve as f64;
-        let amount_after_fee = amount_after_fee as f64;
 
         const CRR: f64 = 0.6051;
 
         let amount_out = if direction == 0 {
             require!(virtual_sol > 0.0, SwifeyError::DivisionByZero);
-            let base = 1.0 + amount_after_fee / virtual_sol;
+            let base = 1.0 + amount_in as f64 / virtual_sol;
             virtual_token * (base.powf(CRR) - 1.0)
         } else {
             require!(virtual_token > 0.0, SwifeyError::DivisionByZero);
-            let base = 1.0 - amount_after_fee / virtual_token;
+            let base = 1.0 - amount_in as f64 / virtual_token;
             virtual_sol * (1.0 - base.powf(1.0 / CRR))
         };
 
         let final_amount = amount_out.floor() as u64;
+
+        let fee_amount = if direction == 0 {
+            (amount_in as f64 * fee_percentage / 100.0) as u64
+        } else {
+            (final_amount as f64 * fee_percentage / 100.0) as u64
+        };
 
         Ok((final_amount, fee_amount))
     }

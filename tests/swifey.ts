@@ -221,7 +221,7 @@ describe("swifey", () => {
           [creator, tokenMintKeypair],
           {
             skipPreflight: true,
-            preflightCommitment: "processed",
+            preflightCommitment: "confirmed",
           }
         );
 
@@ -233,7 +233,24 @@ describe("swifey", () => {
         });
 
         if (confirmation.value.err) {
-          throw new Error("Transaction failed");
+          // Get detailed logs for the failed transaction
+          const txDetails = await provider.connection.getTransaction(
+            signature,
+            {
+              commitment: "confirmed",
+              maxSupportedTransactionVersion: 0,
+            }
+          );
+          console.error("\n=== Transaction Error Details ===");
+          console.error("Signature:", signature);
+          console.error("Error:", confirmation.value.err);
+          console.error("\nTransaction Logs:");
+          if (txDetails?.meta?.logMessages) {
+            txDetails.meta.logMessages.forEach((log, i) => {
+              console.error(`${i}: ${log}`);
+            });
+          }
+          throw new Error("Transaction failed with logs above");
         }
 
         // Verify the bonding curve was created
@@ -394,6 +411,133 @@ describe("swifey", () => {
             console.error(`${i}: ${log}`);
           });
         }
+        throw error;
+      }
+    });
+
+    it("Can sell tokens", async () => {
+      try {
+        console.log("\n=== Starting Sell Test ===");
+
+        // Get initial balances
+        const initialUserSolBalance = await provider.connection.getBalance(
+          user.publicKey
+        );
+        const initialUserTokenBalance = (
+          await provider.connection.getTokenAccountBalance(userTokenAccount)
+        ).value.amount;
+
+        console.log("Initial balances:", {
+          sol: initialUserSolBalance / anchor.web3.LAMPORTS_PER_SOL,
+          tokens: initialUserTokenBalance,
+        });
+
+        // Required accounts for swap (same as buy)
+        const swapAccounts = {
+          user: user.publicKey,
+          globalConfig: configPda,
+          feeRecipient: creator.publicKey,
+          bondingCurve: bondingCurvePda,
+          tokenMint,
+          curveTokenAccount,
+          userTokenAccount,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        };
+
+        // Sell half of the tokens we have
+        const sellAmount = new BN(initialUserTokenBalance).divn(2);
+
+        console.log("\nSell amount:", sellAmount.toString());
+
+        // Get latest blockhash
+        const sellLatestBlockhash =
+          await provider.connection.getLatestBlockhash();
+
+        // Build sell transaction
+        const sellTx = await program.methods
+          .swap(sellAmount, 1, new BN(0)) // direction 1 for sell
+          .accounts(swapAccounts)
+          .signers([user])
+          .transaction();
+
+        // Send and confirm transaction
+        const sellSignature = await provider.connection.sendTransaction(
+          sellTx,
+          [user],
+          {
+            skipPreflight: true,
+            preflightCommitment: "confirmed",
+            maxRetries: 3,
+          }
+        );
+
+        // Wait for confirmation
+        await provider.connection.confirmTransaction(
+          {
+            signature: sellSignature,
+            blockhash: sellLatestBlockhash.blockhash,
+            lastValidBlockHeight: sellLatestBlockhash.lastValidBlockHeight,
+          },
+          "confirmed"
+        );
+
+        // Get final balances
+        const finalUserSolBalance = await provider.connection.getBalance(
+          user.publicKey
+        );
+        const finalUserTokenBalance = (
+          await provider.connection.getTokenAccountBalance(userTokenAccount)
+        ).value.amount;
+
+        console.log("\n=== Sell Transaction Results ===");
+        console.log(
+          "SOL received:",
+          (finalUserSolBalance - initialUserSolBalance) /
+            anchor.web3.LAMPORTS_PER_SOL
+        );
+        console.log(
+          "Tokens sold:",
+          Number(initialUserTokenBalance) - Number(finalUserTokenBalance)
+        );
+        console.log("Final token balance:", finalUserTokenBalance);
+
+        // Get transaction logs
+        const txLogs = await provider.connection.getTransaction(sellSignature, {
+          maxSupportedTransactionVersion: 0,
+          commitment: "confirmed"
+        });
+        console.log("\n=== Transaction Logs ===");
+        txLogs?.meta?.logMessages?.forEach((log, i) => {
+          console.log(`${i}: ${log}`);
+        });
+      } catch (error) {
+        console.error("\n=== Transaction Error ===");
+        console.error("Error:", error);
+
+        // Get detailed transaction logs
+        if (error.logs) {
+          console.error("\nTransaction Logs:");
+          error.logs.forEach((log: string, i: number) => {
+            console.error(`${i}: ${log}`);
+          });
+        }
+
+        // Get program error details if available
+        if (error.error) {
+          console.error("\nProgram Error Details:");
+          console.error("Error Code:", error.error.errorCode);
+          console.error("Error Message:", error.error.errorMessage);
+        }
+
+        // Get instruction error details if available
+        if (error.instruction) {
+          console.error("\nInstruction Error Details:");
+          console.error("Failed Instruction Index:", error.instruction);
+          console.error("Failed Instruction Data:", error.instructionData);
+        }
+
         throw error;
       }
     });
