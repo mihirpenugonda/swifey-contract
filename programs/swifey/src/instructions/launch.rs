@@ -1,6 +1,5 @@
 use crate::{
-    constants::TOKEN_DECIMAL,
-    states::{BondingCurve, Config}
+    constants::TOKEN_DECIMAL, errors::SwifeyError, states::{BondingCurve, Config}
 };
 
 use anchor_lang::{prelude::*, system_program, solana_program::sysvar};
@@ -75,6 +74,9 @@ impl<'info> Launch<'info> {
         uri: String,
         bump_config: u8,
     ) -> Result<()> {
+        // Check if contract is paused
+        require!(!self.global_config.is_paused, SwifeyError::ContractPaused);
+
         let bonding_curve = &mut self.bonding_curve;
         let global_config = &self.global_config;
 

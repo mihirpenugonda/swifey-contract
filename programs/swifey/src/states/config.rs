@@ -12,6 +12,7 @@ pub struct ConfigSettings {  // New struct for the instruction argument
     pub buy_fee_percentage: u64,     // Uses FEE_PRECISION (10000 = 100.00%)
     pub sell_fee_percentage: u64,    // Uses FEE_PRECISION (10000 = 100.00%)
     pub migration_fee_percentage: u64, // Uses FEE_PRECISION (10000 = 100.00%)
+    pub is_paused: bool,             // New pause flag
     pub reserved: [[u8; 8]; 8]
 }
 
@@ -32,6 +33,7 @@ pub struct Config {
     pub sell_fee_percentage: u64,
     pub migration_fee_percentage: u64,
 
+    pub is_paused: bool,             // New pause flag
     pub reserved: [[u8; 8]; 8]
 }
 
@@ -47,5 +49,6 @@ impl Config {
         8 + // buy_fee_percentage
         8 + // sell_fee_percentage
         8 + // migration_fee_percentage
+        1 + // is_paused
         64; // reserved
 }

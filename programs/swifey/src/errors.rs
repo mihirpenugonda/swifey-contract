@@ -70,4 +70,7 @@ pub enum SwifeyError {
 
     #[msg("Amount is too small. Minimum amount is 0.001 SOL for buys")]
     DustAmount,
+
+    #[msg("Contract is paused")]
+    ContractPaused,
 }

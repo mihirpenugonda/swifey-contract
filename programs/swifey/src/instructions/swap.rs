@@ -13,6 +13,9 @@ use anchor_spl::{
 pub fn swap(ctx: Context<Swap>, amount: u64, direction: u8, min_out: u64) -> Result<()> {
     let bonding_curve = &mut ctx.accounts.bonding_curve;
     
+    // Check if contract is paused
+    require!(!ctx.accounts.global_config.is_paused, SwifeyError::ContractPaused);
+    
     require!(bonding_curve.is_completed == false, SwifeyError::CurveLimitReached);
     
     require!(direction == 0 || direction == 1, SwifeyError::InvalidDirection);
