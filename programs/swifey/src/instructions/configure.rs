@@ -1,4 +1,4 @@
-use crate::{errors::SwifeyError, states::{Config, ConfigSettings}, utils::{ConfigurationUpdated, ConfigurationInitialized}};
+use crate::{errors::SwifeyError, states::{Config, ConfigSettings}, utils::{ConfigurationUpdated, ConfigurationInitialized}, constants::{FEE_PRECISION, LAMPORTS_PER_SOL}};
 use anchor_lang::{prelude::*, system_program};
 
 #[derive(Accounts)]
@@ -23,6 +23,45 @@ impl<'info> Configure<'info> {
     pub fn process(&mut self, new_config: ConfigSettings) -> Result<()> {
         msg!("Processing configuration update...");
         
+        // Validate configuration parameters
+        // 1. Validate fee percentages are within reasonable bounds (0-100%)
+        require!(
+            new_config.buy_fee_percentage <= FEE_PRECISION && 
+            new_config.sell_fee_percentage <= FEE_PRECISION && 
+            new_config.migration_fee_percentage <= FEE_PRECISION,
+            SwifeyError::InvalidFeePercentage
+        );
+
+        // 2. Validate initial virtual token reserve is at least 80% of total supply
+        require!(
+            new_config.initial_virtual_token_reserve >= (new_config.total_token_supply * 80) / 100,
+            SwifeyError::InvalidTokenAllocation
+        );
+
+        // 3. Validate initial SOL reserve is non-zero and reasonable
+        require!(
+            new_config.initial_virtual_sol_reserve >= LAMPORTS_PER_SOL, // At least 1 SOL
+            SwifeyError::InsufficientLiquidity
+        );
+
+        // 4. Validate curve limit is greater than initial SOL reserve
+        require!(
+            new_config.curve_limit > new_config.initial_virtual_sol_reserve,
+            SwifeyError::InvalidCurveLimit
+        );
+
+        // 5. Validate total token supply is non-zero
+        require!(
+            new_config.total_token_supply > 0,
+            SwifeyError::InvalidTokenAllocation
+        );
+
+        // 6. Validate initial real token reserve is zero or less than virtual reserve
+        require!(
+            new_config.initial_real_token_reserve <= new_config.initial_virtual_token_reserve,
+            SwifeyError::InvalidTokenAllocation
+        );
+
         // Check if this is first-time initialization
         let is_initialization = self.global_config.authority.eq(&Pubkey::default());
         

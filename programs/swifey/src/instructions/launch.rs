@@ -1,5 +1,5 @@
 use crate::{
-    constants::TOKEN_DECIMAL, errors::SwifeyError, states::{BondingCurve, Config}
+    constants::TOKEN_DECIMAL, errors::SwifeyError, states::{BondingCurve, Config}, constants::{FEE_PRECISION, LAMPORTS_PER_SOL}
 };
 
 use anchor_lang::{prelude::*, system_program, solana_program::sysvar};
@@ -79,6 +79,37 @@ impl<'info> Launch<'info> {
 
         let bonding_curve = &mut self.bonding_curve;
         let global_config = &self.global_config;
+
+        // Validate initial parameters
+        // 1. Validate virtual token reserve is at least 80% of total supply
+        require!(
+            global_config.initial_virtual_token_reserve >= (global_config.total_token_supply * 80) / 100,
+            SwifeyError::InvalidTokenAllocation
+        );
+
+        // 2. Validate initial SOL reserve is non-zero and reasonable
+        require!(
+            global_config.initial_virtual_sol_reserve >= LAMPORTS_PER_SOL, // At least 1 SOL
+            SwifeyError::InsufficientLiquidity
+        );
+
+        // 3. Validate curve limit is greater than initial SOL reserve
+        require!(
+            global_config.curve_limit > global_config.initial_virtual_sol_reserve,
+            SwifeyError::InvalidCurveLimit
+        );
+
+        // 4. Validate total token supply is non-zero
+        require!(
+            global_config.total_token_supply > 0,
+            SwifeyError::InvalidTokenAllocation
+        );
+
+        // 5. Validate initial real token reserve is zero or less than virtual reserve
+        require!(
+            global_config.initial_real_token_reserve <= global_config.initial_virtual_token_reserve,
+            SwifeyError::InvalidTokenAllocation
+        );
 
         // init bonding curve pda
         bonding_curve.virtual_token_reserve = global_config.initial_virtual_token_reserve;

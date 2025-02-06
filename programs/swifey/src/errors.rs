@@ -76,4 +76,7 @@ pub enum SwifeyError {
 
     #[msg("Insufficient liquidity in the bonding curve")]
     InsufficientLiquidity,
+
+    #[msg("Invalid fee percentage - must be between 0 and 100%")]
+    InvalidFeePercentage,
 }
