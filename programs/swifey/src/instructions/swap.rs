@@ -13,6 +13,12 @@ use anchor_spl::{
 pub fn swap(ctx: Context<Swap>, amount: u64, direction: u8, min_out: u64) -> Result<()> {
     let bonding_curve = &mut ctx.accounts.bonding_curve;
     
+    msg!("Starting swap with amount: {}, direction: {}", amount, direction);
+    msg!("Current virtual reserves - SOL: {}, Token: {}", 
+        bonding_curve.virtual_sol_reserve,
+        bonding_curve.virtual_token_reserve
+    );
+    
     // Check if contract is paused
     require!(!ctx.accounts.global_config.is_paused, SwifeyError::ContractPaused);
     
@@ -31,6 +37,11 @@ pub fn swap(ctx: Context<Swap>, amount: u64, direction: u8, min_out: u64) -> Res
     let global_config = &ctx.accounts.global_config;
 
     if direction == 0 {
+        msg!("Attempting buy with amount: {}", amount);
+        msg!("Current curve limit: {}", global_config.curve_limit);
+        msg!("Current buy fee percentage: {}", global_config.buy_fee_percentage);
+        msg!("Current max price impact: {}", global_config.max_price_impact);
+
         let (amount_in, amount_out, fee_amount, new_sol_reserves, new_token_reserves, is_completed) = bonding_curve.buy(
             &ctx.accounts.token_mint,
             global_config.curve_limit,
@@ -44,10 +55,15 @@ pub fn swap(ctx: Context<Swap>, amount: u64, direction: u8, min_out: u64) -> Res
             global_config.buy_fee_percentage,
             ctx.bumps.bonding_curve,
             &ctx.accounts.system_program.to_account_info(),
-            &ctx.accounts.token_program.to_account_info()
+            &ctx.accounts.token_program.to_account_info(),
+            global_config.max_price_impact,
         )?;
 
+        msg!("Buy successful - In: {}, Out: {}, Fee: {}", amount_in, amount_out, fee_amount);
+        msg!("New reserves - SOL: {}, Token: {}", new_sol_reserves, new_token_reserves);
+
         if is_completed {
+            msg!("Curve completed!");
             emit_cpi!(CurveCompleted {
                 token_mint: ctx.accounts.token_mint.key(),
                 final_sol_reserve: new_sol_reserves,

@@ -82,4 +82,7 @@ pub enum SwifeyError {
 
     #[msg("State is locked for transition")]
     StateLocked,
+
+    #[msg("Price impact exceeds maximum allowed")]
+    ExcessivePriceImpact,
 }

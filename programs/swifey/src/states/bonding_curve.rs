@@ -1,13 +1,15 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token::Mint;
+use anchor_spl::token::{Mint, TokenAccount};
 
 use crate::errors::SwifeyError;
 use crate::utils::{
-    sol_transfer_from_user, sol_transfer_with_signer, token_transfer_user,
-    token_transfer_with_signer, TokenPurchased, TokenSold, CurveCompleted
+    fixed_div_u128, fixed_mul_u128, sol_transfer_from_user, sol_transfer_with_signer, token_transfer_user, token_transfer_with_signer, CurveCompleted, TokenPurchased, TokenSold
 };
 use crate::utils::fixed_math::{fixed_mul, fixed_div, fixed_pow};
-use crate::constants::{PRECISION_U64, CRR_NUMERATOR, FEE_PRECISION};
+use crate::constants::{
+    PRECISION, PRECISION_U64, CRR_NUMERATOR, CRR_DENOMINATOR, FEE_PRECISION,
+    MIN_BUY_AMOUNT, MIN_SELL_AMOUNT, MAX_PRICE_IMPACT_BPS
+};
 
 // Minimum SOL liquidity threshold (1 SOL)
 pub const MIN_SOL_LIQUIDITY: u64 = 1_000_000_000;  // 1 SOL in lamports
@@ -95,6 +97,121 @@ impl<'info> BondingCurve {
         Ok(())
     }
 
+    // Calculate amount out without modifying state
+    pub fn calculate_amount_out_preview(&self, amount_in: u64, direction: u8, fee_percentage: u64) -> Result<(u64, u64)> {
+        msg!("Calculating amount out preview - amount_in: {}, direction: {}, fee_percentage: {}", 
+            amount_in, direction, fee_percentage);
+        
+        require!(self.virtual_sol_reserve > 0, SwifeyError::DivisionByZero);
+        require!(self.virtual_token_reserve > 0, SwifeyError::DivisionByZero);
+
+        // Check minimum amounts
+        if direction == 0 {
+            require!(amount_in >= MIN_BUY_AMOUNT, SwifeyError::DustAmount);
+        }
+
+        let amount_out = if direction == 0 { // Buying tokens
+            msg!("Calculating buy amount...");
+            
+            // Calculate ratio = (new_sol/current_sol)^CRR
+            let current_sol = self.virtual_sol_reserve;
+            let new_sol = current_sol.checked_add(amount_in)
+                .ok_or(SwifeyError::MathOverflow)?;
+            
+            msg!("Current SOL: {}, New SOL: {}", current_sol, new_sol);
+            
+            // Calculate ratio = (new_sol/current_sol)^CRR
+            let ratio_base = fixed_div_u128(new_sol, current_sol)?;
+            msg!("Ratio base: {}", ratio_base);
+            
+            let crr = fixed_div_u128(CRR_NUMERATOR, CRR_DENOMINATOR)?;
+            msg!("CRR value: {}", crr);
+            
+            let ratio = fixed_pow(ratio_base as u64, crr as u64)?;
+            msg!("Final ratio: {}", ratio);
+            
+            // Calculate tokens_out = total_tokens * (1 - 1/ratio)
+            let tokens_out = (self.virtual_token_reserve as f64) * 
+                (1.0 - (PRECISION as f64 / ratio as f64));
+            
+            tokens_out as u64
+        } else { // Selling tokens
+            // For selling, use the inverse formula
+            let current_token = self.virtual_token_reserve;
+            let new_token = current_token.checked_add(amount_in)
+                .ok_or(SwifeyError::MathOverflow)?;
+            
+            let ratio_base = fixed_div_u128(new_token, current_token)?;
+            let inverse_crr = fixed_div_u128(CRR_DENOMINATOR, CRR_NUMERATOR)?;
+            let ratio = fixed_pow(ratio_base as u64, inverse_crr as u64)?;
+            
+            let sol_out = (self.virtual_sol_reserve as f64) * 
+                (1.0 - (PRECISION as f64 / ratio as f64));
+            
+            sol_out as u64
+        };
+
+        // Calculate fee amount
+        let fee_amount = if direction == 0 {
+            msg!("Calculating buy fee...");
+            (amount_in as f64 * fee_percentage as f64 / FEE_PRECISION as f64) as u64
+        } else {
+            (amount_out as f64 * fee_percentage as f64 / FEE_PRECISION as f64) as u64
+        };
+
+        Ok((amount_out, fee_amount))
+    }
+
+    // Calculate price impact as percentage in basis points (1% = 100 bps)
+    pub fn calculate_price_impact(&self, amount_in: u64) -> Result<u64> {
+        let current_price = fixed_div_u128(
+            self.virtual_sol_reserve,
+            self.virtual_token_reserve
+        )?;
+        msg!("Current price: {}", current_price);
+        msg!("Current virtual SOL reserve: {}", self.virtual_sol_reserve);
+        msg!("Current virtual token reserve: {}", self.virtual_token_reserve);
+        
+        let new_sol = self.virtual_sol_reserve.checked_add(amount_in)
+            .ok_or_else(|| {
+                msg!("Overflow in new_sol calculation: {} + {}", self.virtual_sol_reserve, amount_in);
+                SwifeyError::MathOverflow
+            })?;
+        msg!("New SOL after amount_in: {}", new_sol);
+            
+        let (amount_out, _) = self.calculate_amount_out_preview(amount_in, 0, 0)?;
+        msg!("Calculated amount_out: {}", amount_out);
+        
+        let new_token = self.virtual_token_reserve.checked_sub(amount_out)
+            .ok_or_else(|| {
+                msg!("Overflow in new_token calculation: {} - {}", self.virtual_token_reserve, amount_out);
+                SwifeyError::MathOverflow
+            })?;
+        msg!("New token reserve: {}", new_token);
+        
+        let execution_price = fixed_div_u128(new_sol, new_token)?;
+        msg!("Execution price: {}", execution_price);
+        
+        // Calculate price impact in basis points (1% = 100 bps)
+        let price_diff = execution_price.checked_sub(current_price)
+            .ok_or_else(|| {
+                msg!("Overflow in price_diff calculation: {} - {}", execution_price, current_price);
+                SwifeyError::MathOverflow
+            })?;
+        msg!("Price difference: {}", price_diff);
+            
+        let impact = fixed_div_u128(
+            price_diff as u64,
+            current_price as u64
+        )?;
+        msg!("Raw impact: {}", impact);
+        
+        let final_impact = ((impact * 10000) / PRECISION) as u64;
+        msg!("Final impact in basis points: {} bps", final_impact);
+        
+        Ok(final_impact)
+    }
+
     // Swap sol for tokens
     pub fn buy(
         &mut self,
@@ -111,40 +228,56 @@ impl<'info> BondingCurve {
         curve_bump: u8,
         system_program: &AccountInfo<'info>,
         token_program: &AccountInfo<'info>,
+        max_price_impact: u64,
     ) -> Result<(u64, u64, u64, u64, u64, bool)> {
+        msg!("Starting buy operation...");
         // Validate state before proceeding
         self.validate_state_transition()?;
 
-        // 1. Calculate amounts and fees
-        let (amount_out, fee_amount) =
-            self.calculate_amount_out(amount_in, 0, fee_percentage)?;
+        // Calculate and validate price impact
+        let price_impact = self.calculate_price_impact(amount_in)?;
+        msg!("Price impact: {} (max allowed: {})", price_impact, max_price_impact);
+        require!(
+            price_impact <= max_price_impact,
+            SwifeyError::ExcessivePriceImpact
+        );
 
-        // 2. Validate amounts
+        // Calculate amounts and fees
+        let (amount_out, fee_amount) =
+            self.calculate_amount_out_preview(amount_in, 0, fee_percentage)?;
+
+        msg!("Calculated amounts - Out: {}, Fee: {}", amount_out, fee_amount);
+
+        // Validate minimum output
         require!(
             amount_out >= min_amount_out,
             SwifeyError::InsufficientAmountOut
         );
 
-        // 3. Calculate new reserves with checked arithmetic
+        // Calculate new reserves
         let amount_in_after_fee = amount_in.checked_sub(fee_amount)
-            .ok_or(SwifeyError::MathOverflow)?;
+            .ok_or_else(|| {
+                msg!("Overflow in amount_in_after_fee: {} - {}", amount_in, fee_amount);
+                SwifeyError::MathOverflow
+            })?;
 
         let new_sol_reserves = self.virtual_sol_reserve
             .checked_add(amount_in_after_fee)
-            .ok_or(SwifeyError::MathOverflow)?;
+            .ok_or_else(|| {
+                msg!("Overflow in new_sol_reserves: {} + {}", self.virtual_sol_reserve, amount_in_after_fee);
+                SwifeyError::MathOverflow
+            })?;
 
         let new_token_reserves = self.virtual_token_reserve
             .checked_sub(amount_out)
-            .ok_or(SwifeyError::MathOverflow)?;
+            .ok_or_else(|| {
+                msg!("Overflow in new_token_reserves: {} - {}", self.virtual_token_reserve, amount_out);
+                SwifeyError::MathOverflow
+            })?;
 
-        // 4. Validate token balance and minimum liquidity
-        let curve_token_balance = curve_ata.try_lamports()?;
-        require!(
-            curve_token_balance >= amount_out,
-            SwifeyError::InsufficientTokenBalance
-        );
+        msg!("New reserves calculated - SOL: {}, Token: {}", new_sol_reserves, new_token_reserves);
 
-        // 5. Perform transfers first
+        // Perform transfers
         sol_transfer_from_user(&user, fee_recipient, system_program, fee_amount)?;
         sol_transfer_from_user(&user, curve_pda, system_program, amount_in_after_fee)?;
         token_transfer_with_signer(
@@ -156,10 +289,10 @@ impl<'info> BondingCurve {
             amount_out,
         )?;
 
-        // 6. Update reserves only after all transfers succeed
+        // Update reserves
         self.update_reserves(new_sol_reserves, new_token_reserves)?;
 
-        // Update completion state atomically
+        // Check if curve is completed
         let is_completed = self.update_completion_state(new_sol_reserves, curve_limit)?;
 
         Ok((amount_in, amount_out, fee_amount, new_sol_reserves, new_token_reserves, is_completed))
@@ -186,7 +319,7 @@ impl<'info> BondingCurve {
 
         // 1. Calculate amounts and fees
         let (amount_out, fee_amount) =
-            self.calculate_amount_out(amount_in, 1, fee_percentage)?;
+            self.calculate_amount_out_preview(amount_in, 1, fee_percentage)?;
         
         // 2. Validate amounts
         require!(
@@ -241,51 +374,5 @@ impl<'info> BondingCurve {
             .ok_or(SwifeyError::DivisionByZero)?;
 
         Ok((amount_in, amount_out, fee_amount, price))
-    }
-
-    //Calculate adjusted amount out and fee amount
-    pub fn calculate_amount_out(
-        &mut self,
-        amount_in: u64,
-        direction: u8,
-        fee_percentage: u64,    // Now using fixed-point (FEE_PRECISION)
-    ) -> Result<(u64, u64)> {
-        require!(self.virtual_sol_reserve > 0, SwifeyError::DivisionByZero);
-        require!(self.virtual_token_reserve > 0, SwifeyError::DivisionByZero);
-
-        let amount_out = if direction == 0 { // Buying tokens
-            // Calculate ratio = (new_sol/current_sol)^CRR
-            let current_sol = self.virtual_sol_reserve;
-            let new_sol = current_sol.checked_add(amount_in).ok_or(SwifeyError::MathOverflow)?;
-            
-            let ratio_base = fixed_div(new_sol, current_sol)?;
-            let ratio = fixed_pow(ratio_base, CRR_NUMERATOR)?;
-            
-            // Calculate tokens_out = virtual_token * (1 - 1/ratio)
-            let inverse_ratio = fixed_div(PRECISION_U64, ratio)?;
-            let one_minus_inverse = PRECISION_U64.checked_sub(inverse_ratio).ok_or(SwifeyError::MathOverflow)?;
-            fixed_mul(self.virtual_token_reserve, one_minus_inverse)?
-        } else { // Selling tokens
-            // For selling, use the inverse formula
-            let current_token = self.virtual_token_reserve;
-            let new_token = current_token.checked_add(amount_in).ok_or(SwifeyError::MathOverflow)?;
-            
-            let ratio_base = fixed_div(new_token, current_token)?;
-            let inverse_crr = fixed_div(PRECISION_U64, CRR_NUMERATOR)?;
-            let ratio = fixed_pow(ratio_base, inverse_crr)?;
-            
-            let inverse_ratio = fixed_div(PRECISION_U64, ratio)?;
-            let one_minus_inverse = PRECISION_U64.checked_sub(inverse_ratio).ok_or(SwifeyError::MathOverflow)?;
-            fixed_mul(self.virtual_sol_reserve, one_minus_inverse)?
-        };
-
-        // Calculate fee amount using fixed-point arithmetic
-        let fee_amount = if direction == 0 {
-            fixed_mul(amount_in, fixed_div(fee_percentage, FEE_PRECISION)?)?
-        } else {
-            fixed_mul(amount_out, fixed_div(fee_percentage, FEE_PRECISION)?)?
-        };
-
-        Ok((amount_out, fee_amount))
     }
 }

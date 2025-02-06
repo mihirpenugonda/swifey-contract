@@ -143,6 +143,7 @@ impl<'info> Configure<'info> {
         self.global_config.buy_fee_percentage = new_config.buy_fee_percentage;
         self.global_config.sell_fee_percentage = new_config.sell_fee_percentage;
         self.global_config.migration_fee_percentage = new_config.migration_fee_percentage;
+        self.global_config.max_price_impact = new_config.max_price_impact;
         self.global_config.is_paused = new_config.is_paused;
         self.global_config.reserved = new_config.reserved;
     }

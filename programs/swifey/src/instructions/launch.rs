@@ -77,6 +77,27 @@ impl<'info> Launch<'info> {
         // Check if contract is paused
         require!(!self.global_config.is_paused, SwifeyError::ContractPaused);
 
+        let rent = Rent::get()?;
+        let min_rent = rent.minimum_balance(self.bonding_curve.to_account_info().data_len());
+        
+        // Add 2x rent buffer for safety
+        let rent_buffer = min_rent.checked_mul(2)
+            .ok_or(SwifeyError::MathOverflow)?;
+
+        msg!("Adding rent buffer of {} lamports to bonding curve PDA", rent_buffer);
+
+        // Transfer additional rent buffer to the bonding curve PDA
+        system_program::transfer(
+            CpiContext::new(
+                self.system_program.to_account_info(),
+                system_program::Transfer {
+                    from: self.creator.to_account_info(),
+                    to: self.bonding_curve.to_account_info(),
+                },
+            ),
+            rent_buffer,
+        )?;
+
         let bonding_curve = &mut self.bonding_curve;
         let global_config = &self.global_config;
 
@@ -111,13 +132,14 @@ impl<'info> Launch<'info> {
             SwifeyError::InvalidTokenAllocation
         );
 
-        // init bonding curve pda
+        // init bonding curve pda with initial SOL balance including rent buffer
         bonding_curve.virtual_token_reserve = global_config.initial_virtual_token_reserve;
         bonding_curve.virtual_sol_reserve = global_config.initial_virtual_sol_reserve;
         bonding_curve.real_token_reserve = global_config.initial_real_token_reserve;
-        bonding_curve.real_sol_reserve = 0;
+        bonding_curve.real_sol_reserve = rent_buffer; // Initialize with rent buffer
         bonding_curve.token_total_supply = global_config.total_token_supply;
         bonding_curve.is_completed = false;
+        bonding_curve.is_migrated = false;
 
         let signer_seeds: &[&[&[u8]]] = &[&[Config::SEED_PREFIX.as_bytes(), &[bump_config]]];
 

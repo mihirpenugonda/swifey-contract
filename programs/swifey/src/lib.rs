@@ -27,7 +27,12 @@ pub mod swifey {
         ctx.accounts.process(name, symbol, uri, ctx.bumps.global_config)
     }
 
-    pub fn swap<'info>(ctx: Context<'_, '_, '_, 'info, Swap<'info>>, amount: u64, direction: u8, min_out: u64) -> Result<()> {
+    pub fn swap<'info>(
+        ctx: Context<'_, '_, '_, 'info, Swap<'info>>, 
+        amount: u64, 
+        direction: u8, 
+        min_out: u64
+    ) -> Result<()> {
         instructions::swap(ctx, amount, direction, min_out)
     }
 
