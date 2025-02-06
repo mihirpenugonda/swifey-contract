@@ -9,7 +9,7 @@ pub mod utils;
 use crate::instructions::*;
 use crate::states::*;
 
-declare_id!("ArsbvSmUJnxW3Ec2sJSq2urmTrVJxefpUtvPBFYLPKgY");
+declare_id!("JBrV73n2b37ivcQJiNEPsKrjSSFKq1hk1vSFPMMYR9wx");
 
 #[program]
 pub mod swifey {

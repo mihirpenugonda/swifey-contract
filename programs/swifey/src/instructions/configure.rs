@@ -21,26 +21,19 @@ pub struct Configure<'info> {
 
 impl<'info> Configure<'info> {
     pub fn process(&mut self, new_config: ConfigSettings) -> Result<()> {
+        msg!("Processing configuration update...");
+        
+        // Log the current state
+        msg!("Current authority: {}", self.global_config.authority);
+        msg!("Signer: {}", self.admin.key());
+
         // If config is not initialized, set the admin as the authority
-        if self.global_config.authority.eq(&Pubkey::default()) {
-            self.global_config.authority = self.admin.key();
-        } else {
-            // If already initialized, verify the signer is the current authority
+        if !self.global_config.authority.eq(&Pubkey::default()) {
             require!(
                 self.global_config.authority == self.admin.key(),
                 SwifeyError::UnauthorizedAddress
             );
-            // Ensure authority cannot be changed from original creator
-            require!(
-                new_config.authority.eq(&self.global_config.authority),
-                SwifeyError::UnauthorizedAddress
-            );
-        }
-
-        require!(
-            !new_config.authority.eq(&Pubkey::default()),
-            SwifeyError::UnauthorizedAddress
-        );
+        } 
 
         // Copy all fields from ConfigSettings to Config
         self.global_config.authority = new_config.authority;
@@ -54,7 +47,6 @@ impl<'info> Configure<'info> {
         self.global_config.sell_fee_percentage = new_config.sell_fee_percentage;
         self.global_config.migration_fee_percentage = new_config.migration_fee_percentage;
         self.global_config.reserved = new_config.reserved;
-
         Ok(())
     }
 }
