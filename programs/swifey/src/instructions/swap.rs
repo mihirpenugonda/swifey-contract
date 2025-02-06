@@ -14,6 +14,7 @@ pub fn swap(ctx: Context<Swap>, amount: u64, direction: u8, min_out: u64) -> Res
     let bonding_curve = &mut ctx.accounts.bonding_curve;
     
     require!(bonding_curve.is_completed == false, SwifeyError::CurveLimitReached);
+    
     require!(direction == 0 || direction == 1, SwifeyError::InvalidDirection);
 
     // Add minimum amount check (0.001 SOL = 1_000_000 lamports)

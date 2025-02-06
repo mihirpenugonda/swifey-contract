@@ -6,6 +6,8 @@ use crate::utils::{
     sol_transfer_from_user, sol_transfer_with_signer, token_transfer_user,
     token_transfer_with_signer, TokenPurchased, TokenSold, CurveCompleted
 };
+use crate::utils::fixed_math::{fixed_mul, fixed_div, fixed_pow};
+use crate::constants::{PRECISION_U64, CRR_NUMERATOR, FEE_PRECISION};
 
 #[account]
 pub struct BondingCurve {
@@ -63,7 +65,7 @@ impl<'info> BondingCurve {
         curve_ata: &AccountInfo<'info>,     // Associated token account for bonding curve
         amount_in: u64,                     // Amount of SOL to pay
         min_amount_out: u64,                // Minimum amount of tokens to receive
-        fee_percentage: f64,                // Fee percentage for buying on the bonding curve
+        fee_percentage: u64,                // Fee percentage using FEE_PRECISION
         curve_bump: u8,                     // Bump for the bonding curve PDA
         system_program: &AccountInfo<'info>, // System program
         token_program: &AccountInfo<'info>,
@@ -107,31 +109,17 @@ impl<'info> BondingCurve {
         //Update reserves on the curve
         self.update_reserves(new_sol_reserves, new_token_reserves)?;
 
-        emit!(TokenPurchased {
-            token_mint: token_mint.key(),
-            buyer: user.key(),
-            sol_amount: amount_in,
-            token_amount: amount_out,
-            fee_amount: fee_amount,
-            price: new_sol_reserves / new_token_reserves
-        });
-
         //Return true if curve reached its limit
         if new_sol_reserves >= curve_limit {
             self.is_completed = true;
-            emit!(CurveCompleted {
-                token_mint: token_mint.key(),
-                final_sol_reserve: new_sol_reserves,
-                final_token_reserve: new_token_reserves,
-            });
-            return Ok((amount_in, amount_out, fee_amount, new_sol_reserves / new_token_reserves, new_token_reserves, true));
+            return Ok((amount_in, amount_out, fee_amount, new_sol_reserves, new_token_reserves, true));
         }
 
         //Return data if curve did not reach its limit
-        Ok((amount_in, amount_out, fee_amount, new_sol_reserves / new_token_reserves, new_token_reserves, false))
+        Ok((amount_in, amount_out, fee_amount, new_sol_reserves, new_token_reserves, false))
     }
 
-  // Swap tokens for sol
+    // Swap tokens for sol
     pub fn sell(
         &mut self,
         token_mint: &Account<'info, Mint>,
@@ -142,7 +130,7 @@ impl<'info> BondingCurve {
         curve_ata: &mut AccountInfo<'info>,
         amount_in: u64,
         min_amount_out: u64,
-        fee_percentage: f64,
+        fee_percentage: u64,
         curve_bump: u8,
         system_program: &AccountInfo<'info>,
         token_program: &AccountInfo<'info>,
@@ -206,51 +194,44 @@ impl<'info> BondingCurve {
         &mut self,
         amount_in: u64,
         direction: u8,
-        fee_percentage: f64,    
+        fee_percentage: u64,    // Now using fixed-point (FEE_PRECISION)
     ) -> Result<(u64, u64)> {
-        // Convert to f64 for precision calculations
-        let virtual_sol = self.virtual_sol_reserve as f64;
-        let virtual_token = self.virtual_token_reserve as f64;
-        let amount_in = amount_in as f64;
+        require!(self.virtual_sol_reserve > 0, SwifeyError::DivisionByZero);
+        require!(self.virtual_token_reserve > 0, SwifeyError::DivisionByZero);
 
-        const CRR: f64 = 0.6051;
-        const LAMPORTS_PER_SOL: f64 = 1_000_000_000.0;
-
-        // Calculate amount out using bonding curve formula
         let amount_out = if direction == 0 { // Buying tokens
-            require!(virtual_sol > 0.0, SwifeyError::DivisionByZero);
+            // Calculate ratio = (new_sol/current_sol)^CRR
+            let current_sol = self.virtual_sol_reserve;
+            let new_sol = current_sol.checked_add(amount_in).ok_or(SwifeyError::MathOverflow)?;
             
-            // Convert everything to SOL (not lamports) for calculation
-            let current_sol = virtual_sol / LAMPORTS_PER_SOL;
-            let sol_in = amount_in / LAMPORTS_PER_SOL;
-            let new_sol = current_sol + sol_in;
+            let ratio_base = fixed_div(new_sol, current_sol)?;
+            let ratio = fixed_pow(ratio_base, CRR_NUMERATOR)?;
             
-            // Exactly match Python calculation
-            let ratio = (new_sol/current_sol).powf(CRR);
-            let tokens_out = virtual_token * (1.0 - 1.0/ratio);
-            
-            tokens_out
+            // Calculate tokens_out = virtual_token * (1 - 1/ratio)
+            let inverse_ratio = fixed_div(PRECISION_U64, ratio)?;
+            let one_minus_inverse = PRECISION_U64.checked_sub(inverse_ratio).ok_or(SwifeyError::MathOverflow)?;
+            fixed_mul(self.virtual_token_reserve, one_minus_inverse)?
         } else { // Selling tokens
-            require!(virtual_token > 0.0, SwifeyError::DivisionByZero);
-            
             // For selling, use the inverse formula
-            let new_virtual_token = virtual_token + amount_in;
-            let ratio = (new_virtual_token/virtual_token).powf(1.0/CRR);
-            let sol_out = virtual_sol * (1.0 - 1.0/ratio);
+            let current_token = self.virtual_token_reserve;
+            let new_token = current_token.checked_add(amount_in).ok_or(SwifeyError::MathOverflow)?;
             
-            sol_out
+            let ratio_base = fixed_div(new_token, current_token)?;
+            let inverse_crr = fixed_div(PRECISION_U64, CRR_NUMERATOR)?;
+            let ratio = fixed_pow(ratio_base, inverse_crr)?;
+            
+            let inverse_ratio = fixed_div(PRECISION_U64, ratio)?;
+            let one_minus_inverse = PRECISION_U64.checked_sub(inverse_ratio).ok_or(SwifeyError::MathOverflow)?;
+            fixed_mul(self.virtual_sol_reserve, one_minus_inverse)?
         };
 
-        // Floor the result and convert back to u64
-        let final_amount = amount_out.floor() as u64;
-
-        // Calculate fee amount
+        // Calculate fee amount using fixed-point arithmetic
         let fee_amount = if direction == 0 {
-            ((amount_in * fee_percentage) / 100.0).floor() as u64
+            fixed_mul(amount_in, fixed_div(fee_percentage, FEE_PRECISION)?)?
         } else {
-            ((final_amount as f64 * fee_percentage) / 100.0).floor() as u64
+            fixed_mul(amount_out, fixed_div(fee_percentage, FEE_PRECISION)?)?
         };
 
-        Ok((final_amount, fee_amount))
+        Ok((amount_out, fee_amount))
     }
 }
