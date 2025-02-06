@@ -37,7 +37,7 @@ pub struct BondingCurve {
 
 impl<'info> BondingCurve {
     pub const SEED_PREFIX: &'static str = "bonding_curve";
-    pub const LEN: usize = 8 * 5 + 1 + 1 + 8;
+    pub const LEN: usize = 8 * 5 + 1 + 1 + 8;  // Back to original size
 
     //Get signer for bonding curve PDA
     pub fn get_signer<'a>(mint: &'a Pubkey, bump: &'a u8) -> [&'a [u8]; 3] {
@@ -62,6 +62,39 @@ impl<'info> BondingCurve {
         Ok(true)
     }
 
+    // Helper to validate state transitions
+    pub fn validate_state_transition(&self) -> Result<()> {
+        // Prevent operations if already migrated
+        require!(!self.is_migrated, SwifeyError::AlreadyMigrated);
+        
+        // Prevent operations if curve is completed (except for migration)
+        if self.is_completed {
+            require!(false, SwifeyError::CurveLimitReached);
+        }
+
+        Ok(())
+    }
+
+    // Helper to safely update completion state
+    pub fn update_completion_state(&mut self, new_sol_reserves: u64, curve_limit: u64) -> Result<bool> {
+        let is_completed = if new_sol_reserves >= curve_limit {
+            self.is_completed = true;
+            true
+        } else {
+            false
+        };
+        Ok(is_completed)
+    }
+
+    // Helper to safely update migration state
+    pub fn update_migration_state(&mut self) -> Result<()> {
+        require!(self.is_completed, SwifeyError::CurveNotCompleted);
+        require!(!self.is_migrated, SwifeyError::AlreadyMigrated);
+        
+        self.is_migrated = true;
+        Ok(())
+    }
+
     // Swap sol for tokens
     pub fn buy(
         &mut self,
@@ -79,6 +112,9 @@ impl<'info> BondingCurve {
         system_program: &AccountInfo<'info>,
         token_program: &AccountInfo<'info>,
     ) -> Result<(u64, u64, u64, u64, u64, bool)> {
+        // Validate state before proceeding
+        self.validate_state_transition()?;
+
         // 1. Calculate amounts and fees
         let (amount_out, fee_amount) =
             self.calculate_amount_out(amount_in, 0, fee_percentage)?;
@@ -123,13 +159,8 @@ impl<'info> BondingCurve {
         // 6. Update reserves only after all transfers succeed
         self.update_reserves(new_sol_reserves, new_token_reserves)?;
 
-        // 7. Check if curve is completed
-        let is_completed = if new_sol_reserves >= curve_limit {
-            self.is_completed = true;
-            true
-        } else {
-            false
-        };
+        // Update completion state atomically
+        let is_completed = self.update_completion_state(new_sol_reserves, curve_limit)?;
 
         Ok((amount_in, amount_out, fee_amount, new_sol_reserves, new_token_reserves, is_completed))
     }
@@ -150,6 +181,9 @@ impl<'info> BondingCurve {
         system_program: &AccountInfo<'info>,
         token_program: &AccountInfo<'info>,
     ) -> Result<(u64, u64, u64, u64)> {
+        // Validate state before proceeding
+        self.validate_state_transition()?;
+
         // 1. Calculate amounts and fees
         let (amount_out, fee_amount) =
             self.calculate_amount_out(amount_in, 1, fee_percentage)?;

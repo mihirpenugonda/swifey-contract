@@ -215,8 +215,8 @@ impl<'info> Migrate<'info> {
             token_balance,
         )?;
     
-        // Mark as migrated
-        bonding_curve.is_migrated = true;
+        // Update migration state atomically
+        bonding_curve.update_migration_state()?;
     
         emit!(MigrationCompleted{
             token_mint: ctx.accounts.token_mint.key(),

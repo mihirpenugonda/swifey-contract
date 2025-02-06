@@ -79,4 +79,7 @@ pub enum SwifeyError {
 
     #[msg("Invalid fee percentage - must be between 0 and 100%")]
     InvalidFeePercentage,
+
+    #[msg("State is locked for transition")]
+    StateLocked,
 }
