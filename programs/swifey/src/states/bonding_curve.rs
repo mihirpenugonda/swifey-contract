@@ -9,6 +9,9 @@ use crate::utils::{
 use crate::utils::fixed_math::{fixed_mul, fixed_div, fixed_pow};
 use crate::constants::{PRECISION_U64, CRR_NUMERATOR, FEE_PRECISION};
 
+// Minimum SOL liquidity threshold (1 SOL)
+pub const MIN_SOL_LIQUIDITY: u64 = 1_000_000_000;  // 1 SOL in lamports
+
 #[account]
 pub struct BondingCurve {
     //Virtual reserves on the curve
@@ -45,8 +48,14 @@ impl<'info> BondingCurve {
         ]
     }
 
-    //Update reserves
+    //Update reserves with minimum liquidity check
     pub fn update_reserves(&mut self, reserve_lamport: u64, reserve_token: u64) -> Result<bool> {
+        // Check minimum SOL liquidity threshold
+        require!(
+            reserve_lamport >= MIN_SOL_LIQUIDITY,
+            SwifeyError::InsufficientLiquidity
+        );
+
         self.virtual_sol_reserve = reserve_lamport;
         self.virtual_token_reserve = reserve_token;
 
@@ -56,18 +65,18 @@ impl<'info> BondingCurve {
     // Swap sol for tokens
     pub fn buy(
         &mut self,
-        token_mint: &Account<'info, Mint>,  // Token mint address
-        curve_limit: u64,                   // Bonding Curve Limit
-        user: &Signer<'info>,               // User address for buyer
-        curve_pda: &mut AccountInfo<'info>, // Bonding Curve PDA
-        fee_recipient: &mut AccountInfo<'info>, // Team wallet address to get fees
-        user_ata: &mut AccountInfo<'info>,  // Associated token account for user
-        curve_ata: &AccountInfo<'info>,     // Associated token account for bonding curve
-        amount_in: u64,                     // Amount of SOL to pay
-        min_amount_out: u64,                // Minimum amount of tokens to receive
-        fee_percentage: u64,                // Fee percentage using FEE_PRECISION
-        curve_bump: u8,                     // Bump for the bonding curve PDA
-        system_program: &AccountInfo<'info>, // System program
+        token_mint: &Account<'info, Mint>,
+        curve_limit: u64,
+        user: &Signer<'info>,
+        curve_pda: &mut AccountInfo<'info>,
+        fee_recipient: &mut AccountInfo<'info>,
+        user_ata: &mut AccountInfo<'info>,
+        curve_ata: &AccountInfo<'info>,
+        amount_in: u64,
+        min_amount_out: u64,
+        fee_percentage: u64,
+        curve_bump: u8,
+        system_program: &AccountInfo<'info>,
         token_program: &AccountInfo<'info>,
     ) -> Result<(u64, u64, u64, u64, u64, bool)> {
         // 1. Calculate amounts and fees
@@ -80,30 +89,28 @@ impl<'info> BondingCurve {
             SwifeyError::InsufficientAmountOut
         );
 
-        // 3. Calculate new reserves
-        let new_token_reserves = self
-            .virtual_token_reserve
+        // 3. Calculate new reserves with checked arithmetic
+        let amount_in_after_fee = amount_in.checked_sub(fee_amount)
+            .ok_or(SwifeyError::MathOverflow)?;
+
+        let new_sol_reserves = self.virtual_sol_reserve
+            .checked_add(amount_in_after_fee)
+            .ok_or(SwifeyError::MathOverflow)?;
+
+        let new_token_reserves = self.virtual_token_reserve
             .checked_sub(amount_out)
-            .ok_or(SwifeyError::InvalidReserves)?;
+            .ok_or(SwifeyError::MathOverflow)?;
 
-        let new_sol_reserves = self
-            .virtual_sol_reserve
-            .checked_add(amount_in - fee_amount)
-            .ok_or(SwifeyError::InvalidReserves)?;
-
-        // 4. Validate token balance
+        // 4. Validate token balance and minimum liquidity
         let curve_token_balance = curve_ata.try_lamports()?;
         require!(
             curve_token_balance >= amount_out,
             SwifeyError::InsufficientTokenBalance
         );
 
-        // 5. Update reserves
-        self.update_reserves(new_sol_reserves, new_token_reserves)?;
-
-        // 6. Perform transfers
+        // 5. Perform transfers first
         sol_transfer_from_user(&user, fee_recipient, system_program, fee_amount)?;
-        sol_transfer_from_user(&user, curve_pda, system_program, amount_in - fee_amount)?;
+        sol_transfer_from_user(&user, curve_pda, system_program, amount_in_after_fee)?;
         token_transfer_with_signer(
             curve_ata,
             curve_pda,
@@ -112,6 +119,9 @@ impl<'info> BondingCurve {
             &[&BondingCurve::get_signer(&token_mint.key(), &curve_bump)],
             amount_out,
         )?;
+
+        // 6. Update reserves only after all transfers succeed
+        self.update_reserves(new_sol_reserves, new_token_reserves)?;
 
         // 7. Check if curve is completed
         let is_completed = if new_sol_reserves >= curve_limit {
@@ -150,28 +160,26 @@ impl<'info> BondingCurve {
             SwifeyError::InsufficientAmountOut
         );
 
-        // 3. Calculate new reserves
-        let new_token_reserves = self
-            .virtual_token_reserve
+        // 3. Calculate new reserves with checked arithmetic
+        let new_token_reserves = self.virtual_token_reserve
             .checked_add(amount_in)
-            .ok_or(SwifeyError::InvalidReserves)?;
+            .ok_or(SwifeyError::MathOverflow)?;
 
-        let new_sol_reserves = self
-            .virtual_sol_reserve
-            .checked_sub(amount_out)
-            .ok_or(SwifeyError::InvalidReserves)?;
+        let amount_out_with_fee = amount_out.checked_add(fee_amount)
+            .ok_or(SwifeyError::MathOverflow)?;
 
-        // 4. Validate SOL balance
+        let new_sol_reserves = self.virtual_sol_reserve
+            .checked_sub(amount_out_with_fee)
+            .ok_or(SwifeyError::MathOverflow)?;
+
+        // 4. Validate SOL balance and minimum liquidity
         let pda_sol_balance = curve_pda.lamports();
         require!(
-            pda_sol_balance >= amount_out,
+            pda_sol_balance >= amount_out_with_fee,
             SwifeyError::InsufficientSolBalance
         );
 
-        // 5. Update reserves
-        self.update_reserves(new_sol_reserves, new_token_reserves)?;
-
-        // 6. Perform transfers
+        // 5. Perform transfers first
         let token = token_mint.key();
         let signer_seeds: &[&[&[u8]]] = &[&BondingCurve::get_signer(&token, &curve_bump)];
 
@@ -181,7 +189,7 @@ impl<'info> BondingCurve {
             user,      
             system_program,
             signer_seeds,
-            amount_out - fee_amount,
+            amount_out,
         )?;
         sol_transfer_with_signer(
             curve_pda, 
@@ -191,7 +199,14 @@ impl<'info> BondingCurve {
             fee_amount,
         )?;
 
-        Ok((amount_in, amount_out, fee_amount, new_sol_reserves / new_token_reserves))
+        // 6. Update reserves only after all transfers succeed
+        self.update_reserves(new_sol_reserves, new_token_reserves)?;
+
+        let price = new_sol_reserves
+            .checked_div(new_token_reserves)
+            .ok_or(SwifeyError::DivisionByZero)?;
+
+        Ok((amount_in, amount_out, fee_amount, price))
     }
 
     //Calculate adjusted amount out and fee amount

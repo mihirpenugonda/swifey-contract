@@ -73,4 +73,7 @@ pub enum SwifeyError {
 
     #[msg("Contract is paused")]
     ContractPaused,
+
+    #[msg("Insufficient liquidity in the bonding curve")]
+    InsufficientLiquidity,
 }
