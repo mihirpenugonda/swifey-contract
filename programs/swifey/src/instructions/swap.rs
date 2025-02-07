@@ -80,7 +80,7 @@ pub fn swap(ctx: Context<Swap>, amount: u64, direction: u8, min_out: u64) -> Res
             price: new_sol_reserves / new_token_reserves
         });
     } else if direction == 1 {
-        let (amount_in, amount_out, fee_amount, price) = bonding_curve.sell(
+        let (amount_in, amount_out, fee_amount, new_sol_reserves, new_token_reserves) = bonding_curve.sell(
             &ctx.accounts.token_mint,
             &ctx.accounts.user,
             curve_pda,
@@ -96,11 +96,13 @@ pub fn swap(ctx: Context<Swap>, amount: u64, direction: u8, min_out: u64) -> Res
             global_config.curve_limit,
         )?;
 
+        let price = new_sol_reserves.checked_div(new_token_reserves).ok_or(SwifeyError::DivisionByZero)?;
+
         emit_cpi!(TokenSold {
             token_mint: ctx.accounts.token_mint.key(),
             buyer: ctx.accounts.user.key(),
-            sol_amount: amount_in,
-            token_amount: amount_out,
+            sol_amount: amount_out,
+            token_amount: amount_in,
             fee_amount: fee_amount,
             price: price
         });

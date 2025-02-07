@@ -308,7 +308,7 @@ impl<'info> BondingCurve {
         system_program: &AccountInfo<'info>,
         token_program: &AccountInfo<'info>,
         curve_limit: u64,
-    ) -> Result<(u64, u64, u64, u64)> {
+    ) -> Result<(u64, u64, u64, u64, u64)> {
         // Validate state before proceeding
         self.validate_state_transition()?;
 
@@ -364,10 +364,6 @@ impl<'info> BondingCurve {
         // 6. Update reserves only after all transfers succeed
         self.update_reserves(new_sol_reserves, new_token_reserves)?;
 
-        let price = new_sol_reserves
-            .checked_div(new_token_reserves)
-            .ok_or(SwifeyError::DivisionByZero)?;
-
-        Ok((amount_in, amount_out, fee_amount, price))
+        Ok((amount_in, amount_out, fee_amount, new_sol_reserves, new_token_reserves))
     }
 }
