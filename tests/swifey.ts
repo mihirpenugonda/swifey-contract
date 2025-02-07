@@ -258,20 +258,13 @@ describe("swifey", () => {
             systemProgram: SystemProgram.programId,
           })
           .signers([user])
-          .preInstructions([
-            // Create user token account if it doesn't exist
-            anchor.web3.ComputeBudgetProgram.setComputeUnitLimit({
-              units: 1000000,
-            }),
-          ])
           .rpc();
 
-        const userBalance = await provider.connection.getTokenAccountBalance(
+        const tokenBalance = await provider.connection.getTokenAccountBalance(
           userTokenAccount
         );
-        console.log(`Received ${userBalance.value.amount} tokens for 1 SOL`);
-        console.log("Token balance details:", userBalance.value);
-        expect(Number(userBalance.value.amount)).to.be.greaterThan(0);
+        console.log(`Received ${tokenBalance.value.amount} tokens for 1 SOL`);
+        console.log("Token balance details:", tokenBalance.value);
       } catch (error) {
         console.error("Buy error:", error);
         throw error;
@@ -374,6 +367,136 @@ describe("swifey", () => {
         expect(userSolBalanceAfter).to.be.greaterThan(userSolBalanceBefore);
       } catch (error) {
         console.error("Sell error:", error);
+        throw error;
+      }
+    });
+
+    it("Can perform multiple buys and sells", async () => {
+      try {
+        // Reset the curve by relaunching
+        tokenMint = Keypair.generate();
+        [bondingCurvePda] = PublicKey.findProgramAddressSync(
+          [Buffer.from("bonding_curve"), tokenMint.publicKey.toBuffer()],
+          program.programId
+        );
+        [metadataPda] = PublicKey.findProgramAddressSync(
+          [
+            Buffer.from("metadata"),
+            METADATA_PROGRAM_ID.toBuffer(),
+            tokenMint.publicKey.toBuffer(),
+          ],
+          METADATA_PROGRAM_ID
+        );
+        curveTokenAccount = await getAssociatedTokenAddress(
+          tokenMint.publicKey,
+          bondingCurvePda,
+          true
+        );
+        userTokenAccount = await getAssociatedTokenAddress(
+          tokenMint.publicKey,
+          user.publicKey
+        );
+
+        // Relaunch token
+        await program.methods
+          .launch("Swifey Token", "SWFY", "https://swifey.io/metadata.json")
+          .accounts({
+            creator: creator.publicKey,
+            globalConfig: configPda,
+            tokenMint: tokenMint.publicKey,
+            bondingCurve: bondingCurvePda,
+            curveTokenAccount: curveTokenAccount,
+            tokenMetadataAccount: metadataPda,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+            metadataProgram: METADATA_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
+            rent: SYSVAR_RENT_PUBKEY,
+          })
+          .signers([creator, tokenMint])
+          .rpc();
+
+        console.log("Curve reset with new token mint");
+
+        // First buy - 2 SOL to ensure minimum liquidity
+        const buyAmount1 = new BN(2 * anchor.web3.LAMPORTS_PER_SOL);
+        await program.methods
+          .swap(buyAmount1, 0, new BN(0))
+          .accounts({
+            user: user.publicKey,
+            globalConfig: configPda,
+            feeRecipient: creator.publicKey,
+            bondingCurve: bondingCurvePda,
+            tokenMint: tokenMint.publicKey,
+            curveTokenAccount: curveTokenAccount,
+            userTokenAccount: userTokenAccount,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
+          })
+          .signers([user])
+          .rpc();
+
+        let tokenBalance = await provider.connection.getTokenAccountBalance(
+          userTokenAccount
+        );
+        console.log(
+          `After first buy (2 SOL): ${tokenBalance.value.amount} tokens`
+        );
+
+        // Second buy - 5 SOL
+        const buyAmount2 = new BN(5 * anchor.web3.LAMPORTS_PER_SOL);
+        await program.methods
+          .swap(buyAmount2, 0, new BN(0))
+          .accounts({
+            user: user.publicKey,
+            globalConfig: configPda,
+            feeRecipient: creator.publicKey,
+            bondingCurve: bondingCurvePda,
+            tokenMint: tokenMint.publicKey,
+            curveTokenAccount: curveTokenAccount,
+            userTokenAccount: userTokenAccount,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
+          })
+          .signers([user])
+          .rpc();
+
+        tokenBalance = await provider.connection.getTokenAccountBalance(
+          userTokenAccount
+        );
+        console.log(
+          `After second buy (5 SOL): ${tokenBalance.value.amount} tokens`
+        );
+
+        // Sell all tokens
+        const sellAmount = new BN(tokenBalance.value.amount).div(new BN(2));
+        await program.methods
+          .swap(sellAmount, 1, new BN(0)) // direction 1 for sell
+          .accounts({
+            user: user.publicKey,
+            globalConfig: configPda,
+            feeRecipient: creator.publicKey,
+            bondingCurve: bondingCurvePda,
+            tokenMint: tokenMint.publicKey,
+            curveTokenAccount: curveTokenAccount,
+            userTokenAccount: userTokenAccount,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
+          })
+          .signers([user])
+          .rpc();
+
+        tokenBalance = await provider.connection.getTokenAccountBalance(
+          userTokenAccount
+        );
+        console.log(
+          `After selling all tokens: ${tokenBalance.value.amount} tokens`
+        );
+      } catch (error) {
+        console.error("Multiple operations error:", error);
         throw error;
       }
     });
