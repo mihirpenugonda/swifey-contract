@@ -500,5 +500,119 @@ describe("swifey", () => {
         throw error;
       }
     });
+
+    it("Should fail when user has insufficient SOL balance", async () => {
+      try {
+        // Create a new user with minimal SOL
+        const poorUser = Keypair.generate();
+
+        // Airdrop just 0.5 SOL to the user
+        await provider.connection.requestAirdrop(
+          poorUser.publicKey,
+          0.5 * anchor.web3.LAMPORTS_PER_SOL
+        );
+        await new Promise((resolve) => setTimeout(resolve, 1000)); // Wait for confirmation
+
+        // Try to buy with 1 SOL (which is more than user has)
+        const buyAmount = new BN(1 * anchor.web3.LAMPORTS_PER_SOL);
+        const userTokenAccount = await getAssociatedTokenAddress(
+          tokenMint.publicKey,
+          poorUser.publicKey
+        );
+
+        // This should fail
+        try {
+          await program.methods
+            .swap(buyAmount, 0, new BN(0))
+            .accounts({
+              user: poorUser.publicKey,
+              globalConfig: configPda,
+              feeRecipient: creator.publicKey,
+              bondingCurve: bondingCurvePda,
+              tokenMint: tokenMint.publicKey,
+              curveTokenAccount: curveTokenAccount,
+              userTokenAccount: userTokenAccount,
+              tokenProgram: TOKEN_PROGRAM_ID,
+              associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+              systemProgram: SystemProgram.programId,
+            })
+            .signers([poorUser])
+            .rpc();
+          assert.fail("Should have failed due to insufficient balance");
+        } catch (error) {
+          expect(error.toString()).to.include("InsufficientUserBalance");
+        }
+      } catch (error) {
+        console.error("Insufficient balance test error:", error);
+        throw error;
+      }
+    });
+
+    it("Should fail when user has insufficient token balance for sell", async () => {
+      try {
+        // Create a new user who has no tokens
+        const noTokenUser = Keypair.generate();
+        await provider.connection.requestAirdrop(
+          noTokenUser.publicKey,
+          1 * anchor.web3.LAMPORTS_PER_SOL
+        );
+        await new Promise((resolve) => setTimeout(resolve, 1000)); // Wait for confirmation
+
+        // Create the token account first so it exists
+        const userTokenAccount = await getAssociatedTokenAddress(
+          tokenMint.publicKey,
+          noTokenUser.publicKey
+        );
+
+        // Create the token account
+        await program.methods
+          .swap(new BN(0), 0, new BN(0)) // A dummy swap to create the account
+          .accounts({
+            user: noTokenUser.publicKey,
+            globalConfig: configPda,
+            feeRecipient: creator.publicKey,
+            bondingCurve: bondingCurvePda,
+            tokenMint: tokenMint.publicKey,
+            curveTokenAccount: curveTokenAccount,
+            userTokenAccount: userTokenAccount,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
+          })
+          .signers([noTokenUser])
+          .rpc();
+
+        // Try to sell tokens (which the user doesn't have)
+        const sellAmount = new BN(1000000); // Try to sell 1 token
+        try {
+          await program.methods
+            .swap(sellAmount, 1, new BN(0))
+            .accounts({
+              user: noTokenUser.publicKey,
+              globalConfig: configPda,
+              feeRecipient: creator.publicKey,
+              bondingCurve: bondingCurvePda,
+              tokenMint: tokenMint.publicKey,
+              curveTokenAccount: curveTokenAccount,
+              userTokenAccount: userTokenAccount,
+              tokenProgram: TOKEN_PROGRAM_ID,
+              associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+              systemProgram: SystemProgram.programId,
+            })
+            .signers([noTokenUser])
+            .rpc();
+          assert.fail("Should have failed due to insufficient token balance");
+        } catch (error) {
+          // The error should be "insufficient funds" from the token program
+          expect(error.toString()).to.include("insufficient funds");
+          console.log(
+            "Test passed: Transaction failed with insufficient funds as expected"
+          );
+        }
+      } catch (error) {
+        console.error("Insufficient token balance test error:", error);
+        throw error;
+      }
+    });
   });
 });

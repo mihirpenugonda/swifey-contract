@@ -30,6 +30,14 @@ pub fn swap(ctx: Context<Swap>, amount: u64, direction: u8, min_out: u64) -> Res
     // Add minimum amount check (0.001 SOL = 1_000_000 lamports)
     if direction == 0 {
         require!(amount >= 1_000_000, SwifeyError::DustAmount);
+        
+        // Validate user has enough SOL balance for the buy
+        let user_balance = ctx.accounts.user.lamports();
+        require!(
+            user_balance >= amount,
+            SwifeyError::InsufficientUserBalance
+        );
+        msg!("User balance validated: {} lamports", user_balance);
     } else {
         require!(amount >= 1000, SwifeyError::DustAmount);
     }

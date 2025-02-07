@@ -85,4 +85,7 @@ pub enum SwifeyError {
 
     #[msg("Price impact exceeds maximum allowed")]
     ExcessivePriceImpact,
+
+    #[msg("User has insufficient SOL balance for this transaction")]
+    InsufficientUserBalance,
 }
