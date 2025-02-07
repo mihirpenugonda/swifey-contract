@@ -68,12 +68,6 @@ impl<'info> BondingCurve {
     pub fn validate_state_transition(&self) -> Result<()> {
         // Prevent operations if already migrated
         require!(!self.is_migrated, SwifeyError::AlreadyMigrated);
-        
-        // Prevent operations if curve is completed (except for migration)
-        if self.is_completed {
-            require!(false, SwifeyError::CurveLimitReached);
-        }
-
         Ok(())
     }
 
@@ -313,6 +307,7 @@ impl<'info> BondingCurve {
         curve_bump: u8,
         system_program: &AccountInfo<'info>,
         token_program: &AccountInfo<'info>,
+        curve_limit: u64,
     ) -> Result<(u64, u64, u64, u64)> {
         // Validate state before proceeding
         self.validate_state_transition()?;

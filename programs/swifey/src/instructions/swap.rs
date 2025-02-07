@@ -92,7 +92,8 @@ pub fn swap(ctx: Context<Swap>, amount: u64, direction: u8, min_out: u64) -> Res
             global_config.sell_fee_percentage,
             ctx.bumps.bonding_curve,
             &ctx.accounts.system_program.to_account_info(),
-            &ctx.accounts.token_program.to_account_info()
+            &ctx.accounts.token_program.to_account_info(),
+            global_config.curve_limit,
         )?;
 
         emit_cpi!(TokenSold {

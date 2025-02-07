@@ -56,11 +56,11 @@ describe("swifey", () => {
     // Airdrop SOL to creator and user
     await provider.connection.requestAirdrop(
       creator.publicKey,
-      50 * anchor.web3.LAMPORTS_PER_SOL
+      100 * anchor.web3.LAMPORTS_PER_SOL
     );
     await provider.connection.requestAirdrop(
       user.publicKey,
-      50 * anchor.web3.LAMPORTS_PER_SOL
+      100 * anchor.web3.LAMPORTS_PER_SOL
     );
 
     // Add delay to confirm airdrop
@@ -95,7 +95,7 @@ describe("swifey", () => {
     const DECIMALS = new BN(6); // 6 decimals to match TOKEN_DECIMAL constant
     const TOTAL_SUPPLY = BASE_SUPPLY.mul(new BN(10).pow(DECIMALS));
     const INITIAL_SOL = new BN(12.33 * anchor.web3.LAMPORTS_PER_SOL);
-    const CURVE_LIMIT = new BN(42 * anchor.web3.LAMPORTS_PER_SOL);
+    const CURVE_LIMIT = new BN(72 * anchor.web3.LAMPORTS_PER_SOL);
     const reserved = Array(8)
       .fill(0)
       .map(() => Array(8).fill(0));
@@ -111,7 +111,7 @@ describe("swifey", () => {
       buyFeePercentage: new BN(50), // 0.5%
       sellFeePercentage: new BN(50), // 0.5%
       migrationFeePercentage: new BN(50), // 0.5%
-      maxPriceImpact: new BN(10000), // 100%
+      maxPriceImpact: new BN(10000000000), // 100%
       isPaused: false,
       reserved: reserved,
     };
@@ -163,7 +163,7 @@ describe("swifey", () => {
           buyFeePercentage: new BN(50), // 0.5%
           sellFeePercentage: new BN(50), // 0.5%
           migrationFeePercentage: new BN(50), // 0.5%
-          maxPriceImpact: new BN(10000), // 100%
+          maxPriceImpact: new BN(10000000000), // 100%
           isPaused: false,
           reserved: reserved,
         };
