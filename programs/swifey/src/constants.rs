@@ -5,14 +5,14 @@ pub const PRECISION: u128 = 1_000_000_000_000;  // 10^12
 pub const PRECISION_U64: u64 = 1_000_000_000;   // Reduced to 10^9 for u64 operations
 pub const FEE_PRECISION: u64 = 10_000;  // 100% = 10000
 
-// CRR (Constant Reserve Ratio) = 0.6051
-pub const CRR_NUMERATOR: u64 = 6051;
+// CRR (Constant Reserve Ratio) = 0.651
+pub const CRR_NUMERATOR: u64 = 6510;
 pub const CRR_DENOMINATOR: u64 = 10000;
 
 // Bonding Curve Parameters
-pub const TARGET_SOL_AMOUNT: u64 = 42_000_000_000; // 42 SOL in lamports
-pub const INITIAL_SOL_RESERVE: u64 = 12_330_000_000; // 12.33 SOL in lamports
-pub const TOKEN_RESERVE_PERCENTAGE: u64 = 8_000; // 80% = 8000 with FEE_PRECISION
+pub const TARGET_SOL_AMOUNT: u64 = 100_000_000_000; // 100 SOL in lamports
+pub const INITIAL_SOL_RESERVE: u64 = 12_500_000_000; // 12.5 SOL in lamports
+pub const TOKEN_RESERVE_PERCENTAGE: u64 = 10_000; // 100% = 10000 with FEE_PRECISION
 pub const LAMPORTS_PER_SOL: u64 = 1_000_000_000; // Conversion rate for lamports to SOL
 
 // Minimum amounts

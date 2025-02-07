@@ -94,8 +94,8 @@ describe("swifey", () => {
     const BASE_SUPPLY = new BN("1000000000"); // 1 billion total tokens
     const DECIMALS = new BN(6); // 6 decimals to match TOKEN_DECIMAL constant
     const TOTAL_SUPPLY = BASE_SUPPLY.mul(new BN(10).pow(DECIMALS));
-    const INITIAL_SOL = new BN(12.33 * anchor.web3.LAMPORTS_PER_SOL);
-    const CURVE_LIMIT = new BN(72 * anchor.web3.LAMPORTS_PER_SOL);
+    const INITIAL_SOL = new BN(12.5 * anchor.web3.LAMPORTS_PER_SOL);
+    const CURVE_LIMIT = new BN(100 * anchor.web3.LAMPORTS_PER_SOL);
     const reserved = Array(8)
       .fill(0)
       .map(() => Array(8).fill(0));
@@ -143,9 +143,9 @@ describe("swifey", () => {
         const TOTAL_SUPPLY = BASE_SUPPLY.mul(new BN(10).pow(DECIMALS));
 
         // Initial SOL must be exactly 5 SOL per error code
-        const INITIAL_SOL = new BN(5 * anchor.web3.LAMPORTS_PER_SOL);
+        const INITIAL_SOL = new BN(12.5 * anchor.web3.LAMPORTS_PER_SOL);
         // Curve limit must be exactly 72 SOL per error code
-        const CURVE_LIMIT = new BN(72 * anchor.web3.LAMPORTS_PER_SOL);
+        const CURVE_LIMIT = new BN(100 * anchor.web3.LAMPORTS_PER_SOL);
 
         // Create the correct nested array structure for reserved
         const reserved = Array(8)
@@ -319,7 +319,7 @@ describe("swifey", () => {
         const userTokenBalance =
           await provider.connection.getTokenAccountBalance(userTokenAccount);
         const sellAmount = new BN(userTokenBalance.value.amount)
-          .muln(99)
+          .muln(95)
           .divn(100); // Sell 95% of tokens
 
         const userSolBalanceBefore = await provider.connection.getBalance(

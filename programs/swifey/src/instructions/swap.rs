@@ -12,6 +12,7 @@ use anchor_spl::{
 
 pub fn swap(ctx: Context<Swap>, amount: u64, direction: u8, min_out: u64) -> Result<()> {
     let bonding_curve = &mut ctx.accounts.bonding_curve;
+    let global_config = &ctx.accounts.global_config;
     
     msg!("Starting swap with amount: {}, direction: {}", amount, direction);
     msg!("Current virtual reserves - SOL: {}, Token: {}", 
@@ -20,7 +21,7 @@ pub fn swap(ctx: Context<Swap>, amount: u64, direction: u8, min_out: u64) -> Res
     );
     
     // Check if contract is paused
-    require!(!ctx.accounts.global_config.is_paused, SwifeyError::ContractPaused);
+    require!(!global_config.is_paused, SwifeyError::ContractPaused);
     
     require!(bonding_curve.is_completed == false, SwifeyError::CurveLimitReached);
     
@@ -34,7 +35,6 @@ pub fn swap(ctx: Context<Swap>, amount: u64, direction: u8, min_out: u64) -> Res
     }
 
     let curve_pda = &mut bonding_curve.to_account_info();
-    let global_config = &ctx.accounts.global_config;
 
     if direction == 0 {
         msg!("Attempting buy with amount: {}", amount);
@@ -44,7 +44,7 @@ pub fn swap(ctx: Context<Swap>, amount: u64, direction: u8, min_out: u64) -> Res
 
         let (amount_in, amount_out, fee_amount, new_sol_reserves, new_token_reserves, is_completed) = bonding_curve.buy(
             &ctx.accounts.token_mint,
-            global_config.curve_limit,
+            global_config,
             &ctx.accounts.user,
             curve_pda,
             &mut ctx.accounts.fee_recipient,
@@ -52,11 +52,9 @@ pub fn swap(ctx: Context<Swap>, amount: u64, direction: u8, min_out: u64) -> Res
             &mut ctx.accounts.curve_token_account.to_account_info(),
             amount,
             min_out,
-            global_config.buy_fee_percentage,
             ctx.bumps.bonding_curve,
             &ctx.accounts.system_program.to_account_info(),
             &ctx.accounts.token_program.to_account_info(),
-            global_config.max_price_impact,
         )?;
 
         msg!("Buy successful - In: {}, Out: {}, Fee: {}", amount_in, amount_out, fee_amount);
@@ -82,6 +80,7 @@ pub fn swap(ctx: Context<Swap>, amount: u64, direction: u8, min_out: u64) -> Res
     } else if direction == 1 {
         let (amount_in, amount_out, fee_amount, new_sol_reserves, new_token_reserves) = bonding_curve.sell(
             &ctx.accounts.token_mint,
+            global_config,
             &ctx.accounts.user,
             curve_pda,
             &mut ctx.accounts.user_token_account.to_account_info(),
@@ -89,11 +88,9 @@ pub fn swap(ctx: Context<Swap>, amount: u64, direction: u8, min_out: u64) -> Res
             &mut ctx.accounts.curve_token_account.to_account_info(),
             amount,
             min_out,
-            global_config.sell_fee_percentage,
             ctx.bumps.bonding_curve,
             &ctx.accounts.system_program.to_account_info(),
             &ctx.accounts.token_program.to_account_info(),
-            global_config.curve_limit,
         )?;
 
         let price = new_sol_reserves.checked_div(new_token_reserves).ok_or(SwifeyError::DivisionByZero)?;
