@@ -24,7 +24,7 @@ pub mod swifey {
         symbol: String,
         uri: String
     ) -> Result<()> {
-        ctx.accounts.process(name, symbol, uri, ctx.bumps.global_config)
+        instructions::launch(ctx, name, symbol, uri)
     }
 
     pub fn swap<'info>(

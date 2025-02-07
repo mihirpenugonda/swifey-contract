@@ -12,6 +12,7 @@ pub struct MigrationCompleted {
 #[event]
 pub struct TokenSold {
     pub token_mint: Pubkey,
+    pub buyer: Pubkey,
     pub sol_amount: u64,
     pub token_amount: u64,
     pub fee_amount: u64,
@@ -70,4 +71,14 @@ pub struct ConfigurationUpdated {
     pub old_is_paused: bool,
     pub new_is_paused: bool,
     pub timestamp: i64,
+}
+
+#[event]
+pub struct TokenLaunched {
+    pub token_mint: Pubkey,
+    pub creator: Pubkey,
+    pub initial_virtual_sol_reserve: u64,
+    pub initial_virtual_token_reserve: u64,
+    pub total_token_supply: u64,
+    pub curve_limit: u64,
 }

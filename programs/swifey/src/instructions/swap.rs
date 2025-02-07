@@ -98,6 +98,7 @@ pub fn swap(ctx: Context<Swap>, amount: u64, direction: u8, min_out: u64) -> Res
 
         emit_cpi!(TokenSold {
             token_mint: ctx.accounts.token_mint.key(),
+            buyer: ctx.accounts.user.key(),
             sol_amount: amount_in,
             token_amount: amount_out,
             fee_amount: fee_amount,
