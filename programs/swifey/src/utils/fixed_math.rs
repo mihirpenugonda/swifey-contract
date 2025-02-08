@@ -3,13 +3,12 @@ use crate::{errors::SwifeyError, constants::{PRECISION, PRECISION_U64}};
 
 /// Fixed-point multiplication for u128
 pub fn fixed_mul_u128(a: u64, b: u128) -> Result<u64> {
-    // First divide one of the operands by PRECISION to prevent overflow
-    let a_reduced = (a as u128).checked_div(PRECISION)
-        .ok_or_else(|| error!(SwifeyError::DivisionByZero))?;
-    
-    let result = a_reduced
+    // First multiply, then divide by PRECISION to maintain precision
+    let result = (a as u128)
         .checked_mul(b)
-        .ok_or_else(|| error!(SwifeyError::MathOverflow))?;
+        .ok_or_else(|| error!(SwifeyError::MathOverflow))?
+        .checked_div(PRECISION)
+        .ok_or_else(|| error!(SwifeyError::DivisionByZero))?;
 
     if result > u64::MAX as u128 {
         return Err(error!(SwifeyError::MathOverflow));
@@ -191,65 +190,23 @@ pub fn fixed_pow(base: u64, exp: u64) -> Result<u64> {
     let mut current_exp = exp.checked_div(PRECISION_U64)
         .ok_or_else(|| error!(SwifeyError::DivisionByZero))?;
     let mut current_base = base;
-    msg!("fixed_pow: Starting binary exponentiation with exp={}", current_exp);
 
-    // Use a more efficient binary exponentiation that reduces intermediate values
+    // Use efficient binary exponentiation (exponentiation by squaring)
     while current_exp > 0 {
         msg!("fixed_pow: Current exp={}, result={}, base={}", current_exp, result, current_base);
         
         if current_exp & 1 == 1 {
-            // Normalize result before multiplication to prevent overflow
-            let normalized_result = if result > PRECISION_U64 {
-                msg!("fixed_pow: Normalizing result {} by PRECISION", result);
-                let norm = fixed_div(result, PRECISION_U64)?;
-                msg!("fixed_pow: Normalized result = {}", norm);
-                norm
-            } else {
-                result
-            };
-            
-            let normalized_base = if current_base > PRECISION_U64 {
-                msg!("fixed_pow: Normalizing base {} by PRECISION", current_base);
-                let norm = fixed_div(current_base, PRECISION_U64)?;
-                msg!("fixed_pow: Normalized base = {}", norm);
-                norm
-            } else {
-                current_base
-            };
-            
-            result = fixed_mul(normalized_result, normalized_base)?;
-            msg!("fixed_pow: After multiplication: result = {}", result);
-            
-            if result > PRECISION_U64 {
-                msg!("fixed_pow: Adjusting large result by PRECISION");
-                result = fixed_mul(result, PRECISION_U64)?;
-                msg!("fixed_pow: Adjusted result = {}", result);
-            }
+            result = fixed_mul(result, current_base)?;
+            msg!("fixed_pow: After odd exp multiplication: result={}", result);
         }
         
-        if current_exp > 1 {
-            let normalized_base = if current_base > PRECISION_U64 {
-                msg!("fixed_pow: Normalizing base {} for squaring", current_base);
-                let norm = fixed_div(current_base, PRECISION_U64)?;
-                msg!("fixed_pow: Normalized base = {}", norm);
-                norm
-            } else {
-                current_base
-            };
-            
-            current_base = fixed_mul(normalized_base, normalized_base)?;
-            msg!("fixed_pow: After squaring: current_base = {}", current_base);
-            
-            if current_base > PRECISION_U64 {
-                msg!("fixed_pow: Adjusting large base by PRECISION");
-                current_base = fixed_mul(current_base, PRECISION_U64)?;
-                msg!("fixed_pow: Adjusted base = {}", current_base);
-            }
+        if current_exp > 1 {  // Only square if we have more iterations to go
+            current_base = fixed_mul(current_base, current_base)?;
+            msg!("fixed_pow: After squaring: current_base={}", current_base);
         }
         
         current_exp = current_exp.checked_shr(1)
             .ok_or_else(|| error!(SwifeyError::MathOverflow))?;
-        msg!("fixed_pow: Shifted exp = {}", current_exp);
     }
 
     msg!("fixed_pow: Final result = {}", result);

@@ -7,7 +7,7 @@ use crate::utils::{
 };
 use crate::constants::{
     PRECISION, CRR_NUMERATOR, CRR_DENOMINATOR,
-    MIN_BUY_AMOUNT
+    MIN_BUY_AMOUNT, FEE_PRECISION
 };
 use crate::states::Config;
 
@@ -159,10 +159,14 @@ impl<'info> BondingCurve {
             
             tokens_out
         } else { // Selling tokens
+            msg!("Calculating sell amount...");
+            
             // For selling, use similar approximation but in reverse
             let current_token = self.virtual_token_reserve;
             let new_token = current_token.checked_add(amount_in)
                 .ok_or(SwifeyError::MathOverflow)?;
+            
+            msg!("Current token reserve: {}, New token reserve: {}", current_token, new_token);
             
             // Calculate ratio = current_token/new_token (scaled by PRECISION)
             let ratio = fixed_div_u128(current_token, new_token)?;
@@ -175,34 +179,66 @@ impl<'info> BondingCurve {
             // Use the same approximation
             let one_minus_ratio = PRECISION.checked_sub(ratio)
                 .ok_or(SwifeyError::MathOverflow)?;
+            msg!("1 - ratio: {}", one_minus_ratio);
             
             let crr_effect = (inverse_crr as u128)
                 .checked_mul(one_minus_ratio)
                 .ok_or(SwifeyError::MathOverflow)?
                 .checked_div(PRECISION)
                 .ok_or(SwifeyError::DivisionByZero)?;
+            msg!("CRR effect: {}", crr_effect);
             
             let final_ratio = PRECISION.checked_sub(crr_effect)
                 .ok_or(SwifeyError::MathOverflow)?;
+            msg!("Final ratio: {}", final_ratio);
             
-            // Calculate sol_out = total_sol * (1 - final_ratio)
-            let sol_out = (self.virtual_sol_reserve as u128)
+            // Calculate base sol_out = total_sol * (1 - final_ratio)
+            let base_sol_out = (self.virtual_sol_reserve as u128)
                 .checked_mul(PRECISION.checked_sub(final_ratio)
                     .ok_or(SwifeyError::MathOverflow)?)
                 .ok_or(SwifeyError::MathOverflow)?
                 .checked_div(PRECISION)
                 .ok_or(SwifeyError::DivisionByZero)? as u64;
             
-            sol_out
+            msg!("Calculated base SOL output: {}", base_sol_out);
+
+            // Calculate fee
+            let fee = (base_sol_out as u128)
+                .checked_mul(fee_percentage as u128)
+                .ok_or(SwifeyError::MathOverflow)?
+                .checked_div(FEE_PRECISION as u128)
+                .ok_or(SwifeyError::DivisionByZero)? as u64;
+
+            // Calculate total amount needed including fee
+            let total_sol_out = base_sol_out
+                .checked_add(fee)
+                .ok_or(SwifeyError::MathOverflow)?;
+            
+            msg!("Calculated total SOL output (with fee): {}", total_sol_out);
+            
+            total_sol_out
         };
 
         // Calculate fee amount using fixed-point arithmetic
+        msg!("Amount out: {}, Fee percentage: {}", amount_out, fee_percentage as u128);
+
         let fee_amount = if direction == 0 {
             msg!("Calculating buy fee...");
-            fixed_mul_u128(amount_in, fee_percentage as u128)?
+            (amount_in as u128)
+                .checked_mul(fee_percentage as u128)
+                .ok_or(SwifeyError::MathOverflow)?
+                .checked_div(FEE_PRECISION as u128)
+                .ok_or(SwifeyError::DivisionByZero)? as u64
         } else {
-            fixed_mul_u128(amount_out, fee_percentage as u128)?
+            msg!("Calculating sell fee...");
+            (amount_out as u128)
+                .checked_mul(fee_percentage as u128)
+                .ok_or(SwifeyError::MathOverflow)?
+                .checked_div(FEE_PRECISION as u128)
+                .ok_or(SwifeyError::DivisionByZero)? as u64
         };
+
+        msg!("Calculated fee amount: {}", fee_amount);
 
         Ok((amount_out, fee_amount))
     }
@@ -228,7 +264,11 @@ impl<'info> BondingCurve {
         self.validate_state_transition()?;
 
         // Calculate fee first
-        let fee_amount = fixed_mul_u128(amount_in, config.buy_fee_percentage as u128)?;
+        let fee_amount = (amount_in as u128)
+            .checked_mul(config.buy_fee_percentage as u128)
+            .ok_or(SwifeyError::MathOverflow)?
+            .checked_div(FEE_PRECISION as u128)
+            .ok_or(SwifeyError::DivisionByZero)? as u64;
         let amount_in_after_fee = amount_in.checked_sub(fee_amount)
             .ok_or_else(|| {
                 msg!("Overflow in amount_in_after_fee: {} - {}", amount_in, fee_amount);
@@ -321,47 +361,51 @@ impl<'info> BondingCurve {
         // Validate state before proceeding
         self.validate_state_transition()?;
 
-        // Calculate amounts and fees
+        // Calculate amounts and fees - amount_out already includes the fee
         let (amount_out, fee_amount) =
             self.calculate_amount_out_preview(amount_in, 1, config.sell_fee_percentage)?;
         
-        // Validate amounts
+        msg!("Calculated amounts - Total Out: {}, Fee: {}, User receives: {}", 
+            amount_out, fee_amount, amount_out.checked_sub(fee_amount).unwrap());
+
+        // Validate amounts - compare what user receives against min_amount_out
         require!(
-            amount_out >= min_amount_out,
+            amount_out.checked_sub(fee_amount).unwrap() >= min_amount_out,
             SwifeyError::InsufficientAmountOut
         );
 
-        // Calculate new reserves with checked arithmetic
+        // Calculate new reserves
         let new_token_reserves = self.virtual_token_reserve
             .checked_add(amount_in)
             .ok_or(SwifeyError::MathOverflow)?;
 
-        let amount_out_with_fee = amount_out.checked_add(fee_amount)
-            .ok_or(SwifeyError::MathOverflow)?;
-
         let new_sol_reserves = self.virtual_sol_reserve
-            .checked_sub(amount_out_with_fee)
+            .checked_sub(amount_out)
             .ok_or(SwifeyError::MathOverflow)?;
 
-        // Validate SOL balance and minimum liquidity
+        // Validate SOL balance
         let pda_sol_balance = curve_pda.lamports();
         require!(
-            pda_sol_balance >= amount_out_with_fee,
+            pda_sol_balance >= amount_out,
             SwifeyError::InsufficientSolBalance
         );
 
-        // Perform transfers first
+        // Perform transfers
         let token = token_mint.key();
         let signer_seeds: &[&[&[u8]]] = &[&BondingCurve::get_signer(&token, &curve_bump)];
 
         token_transfer_user(user_ata, curve_ata, user, token_program, amount_in)?;
+        
+        // Transfer the amount minus fees to user
         sol_transfer_with_signer(
             curve_pda,
             user,      
             system_program,
             signer_seeds,
-            amount_out,
+            amount_out.checked_sub(fee_amount).unwrap(),
         )?;
+        
+        // Transfer fees to fee recipient
         sol_transfer_with_signer(
             curve_pda, 
             fee_recipient,
@@ -373,6 +417,6 @@ impl<'info> BondingCurve {
         // Update reserves
         self.update_reserves(new_sol_reserves, new_token_reserves, config.initial_virtual_sol_reserve)?;
 
-        Ok((amount_in, amount_out, fee_amount, new_sol_reserves, new_token_reserves))
+        Ok((amount_in, amount_out.checked_sub(fee_amount).unwrap(), fee_amount, new_sol_reserves, new_token_reserves))
     }
 }
