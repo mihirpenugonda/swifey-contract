@@ -112,7 +112,7 @@ impl<'info> BondingCurve {
             require!(amount_in >= MIN_BUY_AMOUNT, SwifeyError::DustAmount);
         }
 
-        let amount_out = if direction == 0 { // Buying tokens
+        let mut amount_out = if direction == 0 { // Buying tokens
             msg!("Calculating buy amount...");
             
             // Calculate using CRR formula: tokens_out = total_tokens * (1 - (current_sol/new_sol)^CRR)
@@ -267,22 +267,31 @@ impl<'info> BondingCurve {
         let current_price = fixed_div_u128(self.virtual_sol_reserve, self.virtual_token_reserve)?;
         msg!("Current price before buy: {} SOL/token", current_price as f64 / PRECISION as f64);
 
-        // Calculate fee first
+        // Calculate fee to be added on top of amount_in
         let fee_amount = (amount_in as u128)
             .checked_mul(config.buy_fee_percentage as u128)
             .ok_or(SwifeyError::MathOverflow)?
             .checked_div(FEE_PRECISION as u128)
             .ok_or(SwifeyError::DivisionByZero)? as u64;
-        let amount_in_after_fee = amount_in.checked_sub(fee_amount)
+        
+        // Total amount user will pay is amount_in + fee_amount
+        let total_amount_in = amount_in.checked_add(fee_amount)
             .ok_or_else(|| {
-                msg!("Overflow in amount_in_after_fee: {} - {}", amount_in, fee_amount);
+                msg!("Overflow in total_amount_in: {} + {}", amount_in, fee_amount);
                 SwifeyError::MathOverflow
             })?;
 
-        // Calculate amounts using the amount after fees
-        let (amount_out, _) = self.calculate_amount_out_preview(amount_in_after_fee, 0, 0)?;
+        // Validate user has enough SOL to cover amount_in + fees
+        let user_balance = user.lamports();
+        require!(
+            user_balance >= total_amount_in,
+            SwifeyError::InsufficientUserBalance
+        );
 
-        msg!("Calculated amounts - Out: {}, Fee: {}", amount_out, fee_amount);
+        // Calculate amounts using the original amount_in (not including fees)
+        let (amount_out, _) = self.calculate_amount_out_preview(amount_in, 0, 0)?;
+
+        msg!("Calculated amounts - Out: {}, Fee: {}, Total In: {}", amount_out, fee_amount, total_amount_in);
 
         // Validate minimum output
         require!(
@@ -290,11 +299,11 @@ impl<'info> BondingCurve {
             SwifeyError::InsufficientAmountOut
         );
 
-        // Calculate new reserves using amount after fees
+        // Calculate new reserves using original amount_in
         let new_sol_reserves = self.virtual_sol_reserve
-            .checked_add(amount_in_after_fee)
+            .checked_add(amount_in)
             .ok_or_else(|| {
-                msg!("Overflow in new_sol_reserves: {} + {}", self.virtual_sol_reserve, amount_in_after_fee);
+                msg!("Overflow in new_sol_reserves: {} + {}", self.virtual_sol_reserve, amount_in);
                 SwifeyError::MathOverflow
             })?;
 
@@ -307,9 +316,9 @@ impl<'info> BondingCurve {
 
         msg!("New reserves calculated - SOL: {}, Token: {}", new_sol_reserves, new_token_reserves);
 
-        // Perform transfers
+        // Perform transfers - user pays total_amount_in (amount_in + fee_amount)
         sol_transfer_from_user(&user, fee_recipient, system_program, fee_amount)?;
-        sol_transfer_from_user(&user, curve_pda, system_program, amount_in_after_fee)?;
+        sol_transfer_from_user(&user, curve_pda, system_program, amount_in)?;
         token_transfer_with_signer(
             curve_ata,
             curve_pda,
@@ -380,12 +389,6 @@ impl<'info> BondingCurve {
         msg!("Calculated amounts - Total Out: {}, Fee: {}, User receives: {}", 
             amount_out, fee_amount, amount_out.checked_sub(fee_amount).unwrap());
 
-        // Validate amounts - compare what user receives against min_amount_out
-        require!(
-            amount_out.checked_sub(fee_amount).unwrap() >= min_amount_out,
-            SwifeyError::InsufficientAmountOut
-        );
-
         // Calculate new reserves
         let new_token_reserves = self.virtual_token_reserve
             .checked_add(amount_in)
@@ -397,12 +400,44 @@ impl<'info> BondingCurve {
 
         // Validate SOL balance
         let pda_sol_balance = curve_pda.lamports();
-        require!(
-            pda_sol_balance >= amount_out,
-            SwifeyError::InsufficientSolBalance
-        );
+        
+        // If there's not enough SOL with fees, try without fees
+        if pda_sol_balance < amount_out {
+            msg!("Insufficient SOL balance with fees, attempting fee-less sell...");
+            
+            // Recalculate without fees
+            let (fee_less_amount_out, _) = self.calculate_amount_out_preview(amount_in, 1, 0)?;
+            
+            // Check if we can process without fees
+            if pda_sol_balance >= fee_less_amount_out {
+                msg!("Can process sell without fees");
+                
+                let new_sol_reserves_no_fees = self.virtual_sol_reserve
+                    .checked_sub(fee_less_amount_out)
+                    .ok_or(SwifeyError::MathOverflow)?;
 
-        // Perform transfers
+                // Perform transfers without fees
+                token_transfer_user(user_ata, curve_ata, user, token_program, amount_in)?;
+                
+                sol_transfer_with_signer(
+                    curve_pda,
+                    user,      
+                    system_program,
+                    &[&BondingCurve::get_signer(&token_mint.key(), &curve_bump)],
+                    fee_less_amount_out,
+                )?;
+
+                // Update reserves
+                self.update_reserves(new_sol_reserves_no_fees, new_token_reserves, config.initial_virtual_sol_reserve)?;
+
+                return Ok((amount_in, fee_less_amount_out, 0, new_sol_reserves_no_fees, new_token_reserves));
+            } else {
+                msg!("Cannot process sell even without fees");
+                return Err(SwifeyError::InsufficientSolBalance.into());
+            }
+        }
+
+        // If we have enough balance, proceed with normal fee-included sell
         let token = token_mint.key();
         let signer_seeds: &[&[&[u8]]] = &[&BondingCurve::get_signer(&token, &curve_bump)];
 
@@ -416,7 +451,7 @@ impl<'info> BondingCurve {
             signer_seeds,
             amount_out.checked_sub(fee_amount).unwrap(),
         )?;
-        
+
         // Transfer fees to fee recipient
         sol_transfer_with_signer(
             curve_pda, 

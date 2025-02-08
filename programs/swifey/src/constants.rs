@@ -6,7 +6,7 @@ pub const PRECISION_U64: u64 = 1_000_000_000;   // Reduced to 10^9 for u64 opera
 pub const FEE_PRECISION: u64 = 10_000;  // 100% = 10000
 
 // CRR (Constant Reserve Ratio) = 0.651
-pub const CRR_NUMERATOR: u64 = 6510;
+pub const CRR_NUMERATOR: u64 = 7200;
 pub const CRR_DENOMINATOR: u64 = 10000;
 
 // Bonding Curve Parameters

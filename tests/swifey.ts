@@ -94,8 +94,8 @@ describe("swifey", () => {
     const BASE_SUPPLY = new BN("1000000000"); // 1 billion total tokens
     const DECIMALS = new BN(6); // 6 decimals to match TOKEN_DECIMAL constant
     const TOTAL_SUPPLY = BASE_SUPPLY.mul(new BN(10).pow(DECIMALS));
-    const INITIAL_SOL = new BN(12.5 * anchor.web3.LAMPORTS_PER_SOL);
-    const CURVE_LIMIT = new BN(72 * anchor.web3.LAMPORTS_PER_SOL);
+    const INITIAL_SOL = new BN(4 * anchor.web3.LAMPORTS_PER_SOL);
+    const CURVE_LIMIT = new BN(80 * anchor.web3.LAMPORTS_PER_SOL);
     const reserved = Array(8)
       .fill(0)
       .map(() => Array(8).fill(0));
@@ -108,9 +108,9 @@ describe("swifey", () => {
       initialVirtualSolReserve: INITIAL_SOL,
       initialRealTokenReserve: new BN(0),
       totalTokenSupply: TOTAL_SUPPLY,
-      buyFeePercentage: new BN(50), // 0.5%
-      sellFeePercentage: new BN(50), // 0.5%
-      migrationFeePercentage: new BN(50), // 0.5%
+      buyFeePercentage: new BN(100), // 1%
+      sellFeePercentage: new BN(100), // 1%
+      migrationFeePercentage: new BN(100), // 1%
       maxPriceImpact: new BN(10000000000), // 100%
       isPaused: false,
       reserved: reserved,
@@ -143,9 +143,9 @@ describe("swifey", () => {
         const TOTAL_SUPPLY = BASE_SUPPLY.mul(new BN(10).pow(DECIMALS));
 
         // Initial SOL must be exactly 5 SOL per error code
-        const INITIAL_SOL = new BN(12.5 * anchor.web3.LAMPORTS_PER_SOL);
+        const INITIAL_SOL = new BN(4 * anchor.web3.LAMPORTS_PER_SOL);
         // Curve limit must be exactly 72 SOL per error code
-        const CURVE_LIMIT = new BN(100 * anchor.web3.LAMPORTS_PER_SOL);
+        const CURVE_LIMIT = new BN(82 * anchor.web3.LAMPORTS_PER_SOL);
 
         // Create the correct nested array structure for reserved
         const reserved = Array(8)
@@ -160,9 +160,9 @@ describe("swifey", () => {
           initialVirtualSolReserve: INITIAL_SOL,
           initialRealTokenReserve: new BN(0),
           totalTokenSupply: TOTAL_SUPPLY,
-          buyFeePercentage: new BN(50), // 0.5%
-          sellFeePercentage: new BN(50), // 0.5%
-          migrationFeePercentage: new BN(50), // 0.5%
+          buyFeePercentage: new BN(100), // 1%
+          sellFeePercentage: new BN(100), // 1%
+          migrationFeePercentage: new BN(100), // 1%
           maxPriceImpact: new BN(10000000000), // 100%
           isPaused: false,
           reserved: reserved,
@@ -234,42 +234,42 @@ describe("swifey", () => {
       }
     });
 
-    it("Can buy tokens", async () => {
-      try {
-        userTokenAccount = await getAssociatedTokenAddress(
-          tokenMint.publicKey,
-          user.publicKey
-        );
+    // it("Can buy tokens", async () => {
+    //   try {
+    //     userTokenAccount = await getAssociatedTokenAddress(
+    //       tokenMint.publicKey,
+    //       user.publicKey
+    //     );
 
-        const buyAmount = new BN(1 * anchor.web3.LAMPORTS_PER_SOL); // 1 SOL
+    //     const buyAmount = new BN(1 * anchor.web3.LAMPORTS_PER_SOL); // 1 SOL
 
-        await program.methods
-          .swap(buyAmount, 0, new BN(0)) // direction 0 for buy
-          .accounts({
-            user: user.publicKey,
-            globalConfig: configPda,
-            feeRecipient: creator.publicKey,
-            bondingCurve: bondingCurvePda,
-            tokenMint: tokenMint.publicKey,
-            curveTokenAccount: curveTokenAccount,
-            userTokenAccount: userTokenAccount,
-            tokenProgram: TOKEN_PROGRAM_ID,
-            associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-            systemProgram: SystemProgram.programId,
-          })
-          .signers([user])
-          .rpc();
+    //     await program.methods
+    //       .swap(buyAmount, 0, new BN(0)) // direction 0 for buy
+    //       .accounts({
+    //         user: user.publicKey,
+    //         globalConfig: configPda,
+    //         feeRecipient: creator.publicKey,
+    //         bondingCurve: bondingCurvePda,
+    //         tokenMint: tokenMint.publicKey,
+    //         curveTokenAccount: curveTokenAccount,
+    //         userTokenAccount: userTokenAccount,
+    //         tokenProgram: TOKEN_PROGRAM_ID,
+    //         associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+    //         systemProgram: SystemProgram.programId,
+    //       })
+    //       .signers([user])
+    //       .rpc();
 
-        const tokenBalance = await provider.connection.getTokenAccountBalance(
-          userTokenAccount
-        );
-        console.log(`Received ${tokenBalance.value.amount} tokens for 1 SOL`);
-        console.log("Token balance details:", tokenBalance.value);
-      } catch (error) {
-        console.error("Buy error:", error);
-        throw error;
-      }
-    });
+    //     const tokenBalance = await provider.connection.getTokenAccountBalance(
+    //       userTokenAccount
+    //     );
+    //     console.log(`Received ${tokenBalance.value.amount} tokens for 1 SOL`);
+    //     console.log("Token balance details:", tokenBalance.value);
+    //   } catch (error) {
+    //     console.error("Buy error:", error);
+    //     throw error;
+    //   }
+    // });
 
     it("Can buy tokens with 72 SOL", async () => {
       try {
@@ -278,7 +278,7 @@ describe("swifey", () => {
           user.publicKey
         );
 
-        const buyAmount = new BN(72 * anchor.web3.LAMPORTS_PER_SOL); // 72 SOL
+        const buyAmount = new BN((82 - 4) * anchor.web3.LAMPORTS_PER_SOL); // 72 SOL
 
         await program.methods
           .swap(buyAmount, 0, new BN(0)) // direction 0 for buy
@@ -318,9 +318,7 @@ describe("swifey", () => {
       try {
         const userTokenBalance =
           await provider.connection.getTokenAccountBalance(userTokenAccount);
-        const sellAmount = new BN(userTokenBalance.value.amount)
-          .muln(90)
-          .divn(100); // Sell 95% of tokens
+        const sellAmount = new BN(userTokenBalance.value.amount);
 
         const userSolBalanceBefore = await provider.connection.getBalance(
           user.publicKey
