@@ -87,24 +87,49 @@ pub fn fixed_pow(base: u64, exp: u64) -> Result<u64> {
         return Err(error!(SwifeyError::DivisionByZero));
     }
     
+    // Normalization for large bases instead of saturation
+    const MAX_SAFE_BASE: u64 = 10 * PRECISION_U64; // bases above this are considered too high
+    if base > MAX_SAFE_BASE {
+        msg!("fixed_pow: Base {} exceeds MAX_SAFE_BASE {}. Normalizing.", base, MAX_SAFE_BASE);
+        let mut norm_count = 0;
+        let mut normalized_base = base;
+        while normalized_base > MAX_SAFE_BASE {
+            normalized_base = fixed_div(normalized_base, 10)?;
+            norm_count += 1;
+        }
+        msg!("fixed_pow: Normalized base = {} after {} divisions", normalized_base, norm_count);
+        let safe_result = fixed_pow(normalized_base, exp)?;
+        // Compute correction exponent: (norm_count * (exp as real))
+        let exp_multiplier = (norm_count as u64)
+            .checked_mul(exp).ok_or_else(|| error!(SwifeyError::MathOverflow))?
+            .checked_div(PRECISION_U64).ok_or_else(|| error!(SwifeyError::MathOverflow))?;
+        msg!("fixed_pow: Correction exponent = {}", exp_multiplier);
+        // In fixed point, 10 is represented as 10 * PRECISION_U64
+        let correction = fixed_pow(10 * PRECISION_U64, exp_multiplier)?;
+        msg!("fixed_pow: Correction factor = {}", correction);
+        let result = fixed_mul(safe_result, correction)?;
+        msg!("fixed_pow: Final result after normalization = {}", result);
+        return Ok(result);
+    }
+    
     // For exp = 0, return PRECISION (1.0 in fixed point)
     if exp == 0 {
         msg!("fixed_pow: Exponent is 0, returning PRECISION={}", PRECISION_U64);
         return Ok(PRECISION_U64);
     }
-
+    
     // For exp = PRECISION (1.0), return base unchanged
     if exp == PRECISION_U64 {
         msg!("fixed_pow: Exponent is PRECISION, returning base={}", base);
         return Ok(base);
     }
-
+    
     // For base = PRECISION (1.0), return PRECISION
     if base == PRECISION_U64 {
         msg!("fixed_pow: Base is PRECISION, returning PRECISION={}", PRECISION_U64);
         return Ok(PRECISION_U64);
     }
-
+    
     // Handle fractional exponents
     if exp < PRECISION_U64 {
         msg!("fixed_pow: Handling fractional exponent (exp < PRECISION)");
@@ -160,6 +185,7 @@ pub fn fixed_pow(base: u64, exp: u64) -> Result<u64> {
         return Ok(result);
     }
 
+    // Handle integer exponent using binary exponentiation
     msg!("fixed_pow: Handling integer exponent");
     let mut result = PRECISION_U64;
     let mut current_exp = exp.checked_div(PRECISION_U64)
@@ -321,4 +347,40 @@ pub fn fixed_exp(x: u64) -> Result<u64> {
 /// Calculate fee amount using fixed-point arithmetic
 pub fn calculate_fee_amount(amount: u64, fee_percentage: u64) -> Result<u64> {
     fixed_mul(amount, fee_percentage)
+}
+
+// Unit tests for fixed_pow
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_fixed_pow_integer_exponent() {
+         // For base = 2.0 (represented as 2 * PRECISION_U64) and exponent = 1.0 (PRECISION_U64),
+         // the result should be roughly 2.0 in fixed point.
+         let base = 2 * PRECISION_U64;
+         let exp = PRECISION_U64; // 1.0
+         let result = fixed_pow(base, exp).unwrap();
+         // Allow a small rounding error
+         assert!((result as i64 - (2 * PRECISION_U64) as i64).abs() < 10);
+    }
+
+    #[test]
+    fn test_fixed_pow_fractional_exponent() {
+         // For base = 4.0 and exponent = 0.5, the result should be roughly 2.0
+         let base = 4 * PRECISION_U64;
+         let exp = PRECISION_U64 / 2; // 0.5
+         let result = fixed_pow(base, exp).unwrap();
+         assert!((result as i64 - (2 * PRECISION_U64) as i64).abs() < 10);
+    }
+
+    #[test]
+    fn test_fixed_pow_normalization() {
+         // Test a large base value that requires normalization.
+         let base = 1000 * PRECISION_U64; // large base
+         let exp = PRECISION_U64; // exponent 1.0
+         let result = fixed_pow(base, exp).unwrap();
+         // Expected result should be approximately base. Allow for some rounding error.
+         assert!((result as i64 - (1000 * PRECISION_U64) as i64).abs() < 1000);
+    }
 } 

@@ -207,56 +207,6 @@ impl<'info> BondingCurve {
         Ok((amount_out, fee_amount))
     }
 
-    // Calculate price impact as percentage in basis points (1% = 100 bps)
-    pub fn calculate_price_impact(&self, amount_in: u64) -> Result<u64> {
-        let current_price = fixed_div_u128(
-            self.virtual_sol_reserve,
-            self.virtual_token_reserve
-        )?;
-        msg!("Current price: {}", current_price);
-        msg!("Current virtual SOL reserve: {}", self.virtual_sol_reserve);
-        msg!("Current virtual token reserve: {}", self.virtual_token_reserve);
-        
-        let new_sol = self.virtual_sol_reserve.checked_add(amount_in)
-            .ok_or_else(|| {
-                msg!("Overflow in new_sol calculation: {} + {}", self.virtual_sol_reserve, amount_in);
-                SwifeyError::MathOverflow
-            })?;
-        msg!("New SOL after amount_in: {}", new_sol);
-            
-        let (amount_out, _) = self.calculate_amount_out_preview(amount_in, 0, 0)?;
-        msg!("Calculated amount_out: {}", amount_out);
-        
-        let new_token = self.virtual_token_reserve.checked_sub(amount_out)
-            .ok_or_else(|| {
-                msg!("Overflow in new_token calculation: {} - {}", self.virtual_token_reserve, amount_out);
-                SwifeyError::MathOverflow
-            })?;
-        msg!("New token reserve: {}", new_token);
-        
-        let execution_price = fixed_div_u128(new_sol, new_token)?;
-        msg!("Execution price: {}", execution_price);
-        
-        // Calculate price impact in basis points (1% = 100 bps)
-        let price_diff = execution_price.checked_sub(current_price)
-            .ok_or_else(|| {
-                msg!("Overflow in price_diff calculation: {} - {}", execution_price, current_price);
-                SwifeyError::MathOverflow
-            })?;
-        msg!("Price difference: {}", price_diff);
-            
-        let impact = fixed_div_u128(
-            price_diff as u64,
-            current_price as u64
-        )?;
-        msg!("Raw impact: {}", impact);
-        
-        let final_impact = ((impact * 10000) / PRECISION) as u64;
-        msg!("Final impact in basis points: {} bps", final_impact);
-        
-        Ok(final_impact)
-    }
-
     // Swap sol for tokens
     pub fn buy(
         &mut self,

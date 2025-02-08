@@ -95,7 +95,7 @@ describe("swifey", () => {
     const DECIMALS = new BN(6); // 6 decimals to match TOKEN_DECIMAL constant
     const TOTAL_SUPPLY = BASE_SUPPLY.mul(new BN(10).pow(DECIMALS));
     const INITIAL_SOL = new BN(12.5 * anchor.web3.LAMPORTS_PER_SOL);
-    const CURVE_LIMIT = new BN(100 * anchor.web3.LAMPORTS_PER_SOL);
+    const CURVE_LIMIT = new BN(72 * anchor.web3.LAMPORTS_PER_SOL);
     const reserved = Array(8)
       .fill(0)
       .map(() => Array(8).fill(0));
