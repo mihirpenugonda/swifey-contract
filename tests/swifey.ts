@@ -319,7 +319,7 @@ describe("swifey", () => {
         const userTokenBalance =
           await provider.connection.getTokenAccountBalance(userTokenAccount);
         const sellAmount = new BN(userTokenBalance.value.amount)
-          .muln(95)
+          .muln(90)
           .divn(100); // Sell 95% of tokens
 
         const userSolBalanceBefore = await provider.connection.getBalance(

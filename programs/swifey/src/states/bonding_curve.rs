@@ -263,6 +263,10 @@ impl<'info> BondingCurve {
         // Validate state before proceeding
         self.validate_state_transition()?;
 
+        // Log current price
+        let current_price = fixed_div_u128(self.virtual_sol_reserve, self.virtual_token_reserve)?;
+        msg!("Current price before buy: {} SOL/token", current_price as f64 / PRECISION as f64);
+
         // Calculate fee first
         let fee_amount = (amount_in as u128)
             .checked_mul(config.buy_fee_percentage as u128)
@@ -318,6 +322,10 @@ impl<'info> BondingCurve {
         // Update reserves
         self.update_reserves(new_sol_reserves, new_token_reserves, config.initial_virtual_sol_reserve)?;
 
+        // Log new price
+        let new_price = fixed_div_u128(new_sol_reserves, new_token_reserves)?;
+        msg!("New price after buy: {} SOL/token", new_price as f64 / PRECISION as f64);
+
         // Check if curve is completed
         let is_completed = self.update_completion_state(new_sol_reserves, config.curve_limit)?;
 
@@ -360,6 +368,10 @@ impl<'info> BondingCurve {
     ) -> Result<(u64, u64, u64, u64, u64)> {
         // Validate state before proceeding
         self.validate_state_transition()?;
+
+        // Log current price
+        let current_price = fixed_div_u128(self.virtual_sol_reserve, self.virtual_token_reserve)?;
+        msg!("Current price before sell: {} SOL/token", current_price as f64 / PRECISION as f64);
 
         // Calculate amounts and fees - amount_out already includes the fee
         let (amount_out, fee_amount) =
@@ -416,6 +428,10 @@ impl<'info> BondingCurve {
 
         // Update reserves
         self.update_reserves(new_sol_reserves, new_token_reserves, config.initial_virtual_sol_reserve)?;
+
+        // Log new price
+        let new_price = fixed_div_u128(new_sol_reserves, new_token_reserves)?;
+        msg!("New price after sell: {} SOL/token", new_price as f64 / PRECISION as f64);
 
         Ok((amount_in, amount_out.checked_sub(fee_amount).unwrap(), fee_amount, new_sol_reserves, new_token_reserves))
     }
