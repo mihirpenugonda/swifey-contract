@@ -278,7 +278,7 @@ describe("swifey", () => {
           user.publicKey
         );
 
-        const buyAmount = new BN((82 - 4) * anchor.web3.LAMPORTS_PER_SOL); // 72 SOL
+        const buyAmount = new BN(50 * anchor.web3.LAMPORTS_PER_SOL); // 72 SOL
 
         await program.methods
           .swap(buyAmount, 0, new BN(0)) // direction 0 for buy

@@ -202,17 +202,8 @@ impl<'info> BondingCurve {
             
             msg!("Calculated base SOL output: {}", base_sol_out);
 
-            // Calculate fee
-            let fee = (base_sol_out as u128)
-                .checked_mul(fee_percentage as u128)
-                .ok_or(SwifeyError::MathOverflow)?
-                .checked_div(FEE_PRECISION as u128)
-                .ok_or(SwifeyError::DivisionByZero)? as u64;
-
             // Calculate total amount needed including fee
-            let total_sol_out = base_sol_out
-                .checked_add(fee)
-                .ok_or(SwifeyError::MathOverflow)?;
+            let total_sol_out = base_sol_out;
             
             msg!("Calculated total SOL output (with fee): {}", total_sol_out);
             
@@ -268,11 +259,18 @@ impl<'info> BondingCurve {
         msg!("Current price before buy: {} SOL/token", current_price as f64 / PRECISION as f64);
 
         // Calculate fee to be added on top of amount_in
-        let fee_amount = (amount_in as u128)
-            .checked_mul(config.buy_fee_percentage as u128)
-            .ok_or(SwifeyError::MathOverflow)?
-            .checked_div(FEE_PRECISION as u128)
-            .ok_or(SwifeyError::DivisionByZero)? as u64;
+        let fee_amount = if config.buy_fee_percentage > 0 {
+            (amount_in as u128)
+                .checked_mul(config.buy_fee_percentage as u128)
+                .ok_or(SwifeyError::MathOverflow)?
+                .checked_div(FEE_PRECISION as u128)
+                .ok_or(SwifeyError::DivisionByZero)? as u64
+        } else {
+            0
+        };
+
+        msg!("Fee calculation - Amount: {}, Fee Percentage: {}, Fee Amount: {}", 
+            amount_in, config.buy_fee_percentage, fee_amount);
         
         // Total amount user will pay is amount_in + fee_amount
         let total_amount_in = amount_in.checked_add(fee_amount)
