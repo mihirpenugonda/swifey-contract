@@ -81,7 +81,8 @@ impl Default for Config {
 
 impl Config {
     pub const SEED_PREFIX: &'static str = "global_config";
-    pub const LEN: usize = 32 + // authority
+    pub const LEN: usize = 8 + // discriminator
+        32 + // authority
         32 + // fee_recipient
         8 + // curve_limit
         8 + // initial_virtual_token_reserve

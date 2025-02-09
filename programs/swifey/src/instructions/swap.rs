@@ -65,7 +65,13 @@ pub fn swap(ctx: Context<Swap>, amount: u64, direction: u8, min_out: u64) -> Res
             &ctx.accounts.token_program.to_account_info(),
         )?;
 
-        msg!("Buy successful - In: {}, Out: {}, Fee: {}", amount_in, amount_out, fee_amount);
+        // Calculate price as token/sol ratio with higher precision
+        let price = (new_token_reserves as u128)
+            .checked_mul(1_000_000)
+            .and_then(|v| v.checked_div(new_sol_reserves as u128))
+            .ok_or(SwifeyError::MathOverflow)?;
+
+        msg!("Buy successful - In: {}, Out: {}, Fee: {}, Price: {}", amount_in, amount_out, fee_amount, price);
         msg!("New reserves - SOL: {}, Token: {}", new_sol_reserves, new_token_reserves);
 
         if is_completed {
@@ -83,7 +89,7 @@ pub fn swap(ctx: Context<Swap>, amount: u64, direction: u8, min_out: u64) -> Res
             sol_amount: amount_in,
             token_amount: amount_out,
             fee_amount: fee_amount,
-            price: new_sol_reserves / new_token_reserves
+            price: price as u64
         });
     } else if direction == 1 {
         let (amount_in, amount_out, fee_amount, new_sol_reserves, new_token_reserves) = bonding_curve.sell(
@@ -101,7 +107,13 @@ pub fn swap(ctx: Context<Swap>, amount: u64, direction: u8, min_out: u64) -> Res
             &ctx.accounts.token_program.to_account_info(),
         )?;
 
-        let price = new_sol_reserves.checked_div(new_token_reserves).ok_or(SwifeyError::DivisionByZero)?;
+        // Calculate price as token/sol ratio with higher precision
+        let price = (new_token_reserves as u128)
+            .checked_mul(1_000_000)
+            .and_then(|v| v.checked_div(new_sol_reserves as u128))
+            .ok_or(SwifeyError::MathOverflow)?;
+
+        msg!("Sell successful - In: {}, Out: {}, Fee: {}, Price: {}", amount_in, amount_out, fee_amount, price);
 
         emit_cpi!(TokenSold {
             token_mint: ctx.accounts.token_mint.key(),
@@ -109,7 +121,7 @@ pub fn swap(ctx: Context<Swap>, amount: u64, direction: u8, min_out: u64) -> Res
             sol_amount: amount_out,
             token_amount: amount_in,
             fee_amount: fee_amount,
-            price: price
+            price: price as u64
         });
     }
     Ok(())

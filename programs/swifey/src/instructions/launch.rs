@@ -142,8 +142,11 @@ pub fn launch(
         None,
     )?;
 
-    emit!(TokenLaunched {
+    emit_cpi!(TokenLaunched {
         token_mint: ctx.accounts.token_mint.key(),
+        name: name,
+        symbol: symbol,
+        uri: uri,
         creator: ctx.accounts.creator.key(),
         initial_virtual_sol_reserve: global_config.initial_virtual_sol_reserve,
         initial_virtual_token_reserve: global_config.initial_virtual_token_reserve,

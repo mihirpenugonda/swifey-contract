@@ -81,4 +81,7 @@ pub struct TokenLaunched {
     pub initial_virtual_token_reserve: u64,
     pub total_token_supply: u64,
     pub curve_limit: u64,
+    pub name: String,
+    pub symbol: String,
+    pub uri: String,
 }
