@@ -16,7 +16,9 @@ pub struct TokenSold {
     pub sol_amount: u64,
     pub token_amount: u64,
     pub fee_amount: u64,
-    pub price: u64
+    pub price: u64,
+    pub new_sol_reserves: u64,  
+    pub new_token_reserves: u64,
 }
 
 #[event]
@@ -26,7 +28,9 @@ pub struct TokenPurchased {
     pub sol_amount: u64,
     pub token_amount: u64,
     pub fee_amount: u64,
-    pub price: u64
+    pub price: u64,
+    pub new_sol_reserves: u64,  
+    pub new_token_reserves: u64,
 }
 
 #[event]

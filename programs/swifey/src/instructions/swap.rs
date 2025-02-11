@@ -14,12 +14,6 @@ pub fn swap(ctx: Context<Swap>, amount: u64, direction: u8, min_out: u64) -> Res
     let bonding_curve = &mut ctx.accounts.bonding_curve;
     let global_config = &ctx.accounts.global_config;
     
-    msg!("Starting swap with amount: {}, direction: {}", amount, direction);
-    msg!("Current virtual reserves - SOL: {}, Token: {}", 
-        bonding_curve.virtual_sol_reserve,
-        bonding_curve.virtual_token_reserve
-    );
-    
     // Check if contract is paused
     require!(!global_config.is_paused, SwifeyError::ContractPaused);
     
@@ -37,7 +31,6 @@ pub fn swap(ctx: Context<Swap>, amount: u64, direction: u8, min_out: u64) -> Res
             user_balance >= amount,
             SwifeyError::InsufficientUserBalance
         );
-        msg!("User balance validated: {} lamports", user_balance);
     } else {
         require!(amount >= 1000, SwifeyError::DustAmount);
     }
@@ -45,11 +38,6 @@ pub fn swap(ctx: Context<Swap>, amount: u64, direction: u8, min_out: u64) -> Res
     let curve_pda = &mut bonding_curve.to_account_info();
 
     if direction == 0 {
-        msg!("Attempting buy with amount: {}", amount);
-        msg!("Current curve limit: {}", global_config.curve_limit);
-        msg!("Current buy fee percentage: {}", global_config.buy_fee_percentage);
-        msg!("Current max price impact: {}", global_config.max_price_impact);
-
         let (amount_in, amount_out, fee_amount, new_sol_reserves, new_token_reserves, is_completed) = bonding_curve.buy(
             &ctx.accounts.token_mint,
             global_config,
@@ -71,11 +59,7 @@ pub fn swap(ctx: Context<Swap>, amount: u64, direction: u8, min_out: u64) -> Res
             .and_then(|v| v.checked_div(new_sol_reserves as u128))
             .ok_or(SwifeyError::MathOverflow)?;
 
-        msg!("Buy successful - In: {}, Out: {}, Fee: {}, Price: {}", amount_in, amount_out, fee_amount, price);
-        msg!("New reserves - SOL: {}, Token: {}", new_sol_reserves, new_token_reserves);
-
         if is_completed {
-            msg!("Curve completed!");
             emit_cpi!(CurveCompleted {
                 token_mint: ctx.accounts.token_mint.key(),
                 final_sol_reserve: new_sol_reserves,
@@ -89,7 +73,9 @@ pub fn swap(ctx: Context<Swap>, amount: u64, direction: u8, min_out: u64) -> Res
             sol_amount: amount_in,
             token_amount: amount_out,
             fee_amount: fee_amount,
-            price: price as u64
+            price: price as u64,
+            new_sol_reserves: new_sol_reserves,
+            new_token_reserves: new_token_reserves,
         });
     } else if direction == 1 {
         let (amount_in, amount_out, fee_amount, new_sol_reserves, new_token_reserves) = bonding_curve.sell(
@@ -113,15 +99,15 @@ pub fn swap(ctx: Context<Swap>, amount: u64, direction: u8, min_out: u64) -> Res
             .and_then(|v| v.checked_div(new_sol_reserves as u128))
             .ok_or(SwifeyError::MathOverflow)?;
 
-        msg!("Sell successful - In: {}, Out: {}, Fee: {}, Price: {}", amount_in, amount_out, fee_amount, price);
-
         emit_cpi!(TokenSold {
             token_mint: ctx.accounts.token_mint.key(),
             buyer: ctx.accounts.user.key(),
             sol_amount: amount_out,
             token_amount: amount_in,
             fee_amount: fee_amount,
-            price: price as u64
+            price: price as u64,
+            new_sol_reserves: new_sol_reserves,
+            new_token_reserves: new_token_reserves,
         });
     }
     Ok(())

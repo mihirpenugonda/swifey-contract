@@ -11,7 +11,7 @@ swifey = "FWyJedeiqLC9PYA9dFFKAAAwvb48JurtN4W6b8Akayyh"
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "devnet"
+cluster = "localnet"
 wallet = "./id.json"
 
 [scripts]

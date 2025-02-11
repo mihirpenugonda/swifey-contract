@@ -21,8 +21,6 @@ pub struct Configure<'info> {
 
 impl<'info> Configure<'info> {
     pub fn process(&mut self, new_config: ConfigSettings) -> Result<()> {
-        msg!("Processing configuration update...");
-        
         // Validate configuration parameters
         // 1. Validate fee percentages are within reasonable bounds (0-100%)
         require!(
@@ -105,9 +103,6 @@ impl<'info> Configure<'info> {
             });
         } else {
             // First time initialization
-            msg!("Initializing configuration for the first time");
-            
-            // Update configuration
             self.update_config(&new_config);
 
             // Emit initialization event
