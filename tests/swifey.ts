@@ -316,13 +316,41 @@ describe("swifey", () => {
 
     it("Can sell tokens", async () => {
       try {
+        // Get initial balances
         const userTokenBalance =
           await provider.connection.getTokenAccountBalance(userTokenAccount);
-        const sellAmount = new BN(userTokenBalance.value.amount);
-
         const userSolBalanceBefore = await provider.connection.getBalance(
           user.publicKey
         );
+        const feeRecipientBalanceBefore = await provider.connection.getBalance(
+          creator.publicKey
+        );
+        const pdaBalanceBefore = await provider.connection.getBalance(
+          bondingCurvePda
+        );
+
+        console.log("\nBalances Before Sell:");
+        console.log(
+          `User Token Balance: ${userTokenBalance.value.amount} tokens`
+        );
+        console.log(
+          `User SOL Balance: ${
+            userSolBalanceBefore / anchor.web3.LAMPORTS_PER_SOL
+          } SOL`
+        );
+        console.log(
+          `Fee Recipient SOL Balance: ${
+            feeRecipientBalanceBefore / anchor.web3.LAMPORTS_PER_SOL
+          } SOL`
+        );
+        console.log(
+          `PDA SOL Balance: ${
+            pdaBalanceBefore / anchor.web3.LAMPORTS_PER_SOL
+          } SOL`
+        );
+
+        const sellAmount = new BN(userTokenBalance.value.amount);
+        console.log(`\nSelling ${sellAmount.toString()} tokens`);
 
         await program.methods
           .swap(sellAmount, 1, new BN(0)) // direction 1 for sell
@@ -346,23 +374,68 @@ describe("swifey", () => {
           ])
           .rpc();
 
+        // Get final balances
         const userSolBalanceAfter = await provider.connection.getBalance(
           user.publicKey
         );
+        const feeRecipientBalanceAfter = await provider.connection.getBalance(
+          creator.publicKey
+        );
+        const pdaBalanceAfter = await provider.connection.getBalance(
+          bondingCurvePda
+        );
         const userTokenBalanceAfter =
           await provider.connection.getTokenAccountBalance(userTokenAccount);
-        console.log(`Sold ${sellAmount.toString()} tokens`);
+
+        console.log("\nBalances After Sell:");
         console.log(
-          "SOL received:",
-          (userSolBalanceAfter - userSolBalanceBefore) /
-            anchor.web3.LAMPORTS_PER_SOL,
-          "SOL"
+          `User Token Balance: ${userTokenBalanceAfter.value.amount} tokens`
         );
         console.log(
-          "Remaining token balance:",
-          userTokenBalanceAfter.value.amount
+          `User SOL Balance: ${
+            userSolBalanceAfter / anchor.web3.LAMPORTS_PER_SOL
+          } SOL`
         );
+        console.log(
+          `Fee Recipient SOL Balance: ${
+            feeRecipientBalanceAfter / anchor.web3.LAMPORTS_PER_SOL
+          } SOL`
+        );
+        console.log(
+          `PDA SOL Balance: ${
+            pdaBalanceAfter / anchor.web3.LAMPORTS_PER_SOL
+          } SOL`
+        );
+
+        console.log("\nTransfer Summary:");
+        console.log(
+          `SOL transferred to user: ${
+            (userSolBalanceAfter - userSolBalanceBefore) /
+            anchor.web3.LAMPORTS_PER_SOL
+          } SOL`
+        );
+        console.log(
+          `SOL transferred to fee recipient: ${
+            (feeRecipientBalanceAfter - feeRecipientBalanceBefore) /
+            anchor.web3.LAMPORTS_PER_SOL
+          } SOL`
+        );
+        console.log(
+          `PDA SOL change: ${
+            (pdaBalanceAfter - pdaBalanceBefore) / anchor.web3.LAMPORTS_PER_SOL
+          } SOL`
+        );
+        console.log(
+          `Tokens transferred from user: ${
+            Number(userTokenBalance.value.amount) -
+            Number(userTokenBalanceAfter.value.amount)
+          } tokens`
+        );
+
         expect(userSolBalanceAfter).to.be.greaterThan(userSolBalanceBefore);
+        expect(feeRecipientBalanceAfter).to.be.greaterThan(
+          feeRecipientBalanceBefore
+        );
       } catch (error) {
         console.error("Sell error:", error);
         throw error;
