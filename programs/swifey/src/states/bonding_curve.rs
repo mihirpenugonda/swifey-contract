@@ -321,7 +321,7 @@ impl<'info> BondingCurve {
         // Validate state before proceeding
         self.validate_state_transition()?;
 
-        // Calculate amounts and fees - amount_out already includes the fee
+        // Calculate amounts and fees
         let (amount_out, fee_amount) =
             self.calculate_amount_out_preview(amount_in, 1, config.sell_fee_percentage)?;
 
@@ -334,44 +334,18 @@ impl<'info> BondingCurve {
             .checked_sub(amount_out)
             .ok_or(SwifeyError::MathOverflow)?;
 
-        // Validate SOL balance
+        // Calculate user amount (amount minus fees)
+        let user_amount = amount_out.checked_sub(fee_amount)
+            .ok_or(SwifeyError::MathOverflow)?;
+
+        // Validate SOL balance - check if we have enough for both user amount and fees
         let pda_sol_balance = curve_pda.lamports();
-        
-        // If there's not enough SOL with fees, try without fees
-        if pda_sol_balance < amount_out {
-            // Recalculate without fees
-            let (fee_less_amount_out, _) = self.calculate_amount_out_preview(amount_in, 1, 0)?;
-            
-            // Check if we can process without fees
-            if pda_sol_balance >= fee_less_amount_out {
-                let new_sol_reserves_no_fees = self.virtual_sol_reserve
-                    .checked_sub(fee_less_amount_out)
-                    .ok_or(SwifeyError::MathOverflow)?;
+        require!(pda_sol_balance >= user_amount, SwifeyError::InsufficientSolBalance);
 
-                // Perform transfers without fees
-                token_transfer_user(user_ata, curve_ata, user, token_program, amount_in)?;
-                
-                sol_transfer_with_signer(
-                    curve_pda,
-                    user,      
-                    system_program,
-                    &[&BondingCurve::get_signer(&token_mint.key(), &curve_bump)],
-                    fee_less_amount_out,
-                )?;
-
-                // Update reserves
-                self.update_reserves(new_sol_reserves_no_fees, new_token_reserves, config.initial_virtual_sol_reserve)?;
-
-                return Ok((amount_in, fee_less_amount_out, 0, new_sol_reserves_no_fees, new_token_reserves));
-            } else {
-                return Err(SwifeyError::InsufficientSolBalance.into());
-            }
-        }
-
-        // If we have enough balance, proceed with normal fee-included sell
         let token = token_mint.key();
         let signer_seeds: &[&[&[u8]]] = &[&BondingCurve::get_signer(&token, &curve_bump)];
 
+        // First transfer tokens from user to curve
         token_transfer_user(user_ata, curve_ata, user, token_program, amount_in)?;
         
         // Transfer the amount minus fees to user
@@ -380,21 +354,34 @@ impl<'info> BondingCurve {
             user,      
             system_program,
             signer_seeds,
-            amount_out.checked_sub(fee_amount).unwrap(),
+            user_amount,
         )?;
 
-        // Transfer fees to fee recipient
-        sol_transfer_with_signer(
-            curve_pda, 
-            fee_recipient,
-            system_program,
-            signer_seeds,
-            fee_amount,
-        )?;
+        // Transfer fees to fee recipient if there are any and if we have enough balance
+        if fee_amount > 0 && pda_sol_balance.checked_sub(user_amount).unwrap_or(0) >= fee_amount {
+            sol_transfer_with_signer(
+                curve_pda, 
+                fee_recipient,
+                system_program,
+                signer_seeds,
+                fee_amount,
+            )?;
+        }
 
         // Update reserves
         self.update_reserves(new_sol_reserves, new_token_reserves, config.initial_virtual_sol_reserve)?;
 
-        Ok((amount_in, amount_out.checked_sub(fee_amount).unwrap(), fee_amount, new_sol_reserves, new_token_reserves))
+        emit!(TokenSold {
+            token_mint: token_mint.key(),
+            buyer: user.key(),
+            sol_amount: user_amount,
+            token_amount: amount_in,
+            fee_amount,
+            price: new_sol_reserves / new_token_reserves,
+            new_sol_reserves,
+            new_token_reserves
+        });
+
+        Ok((amount_in, amount_out, fee_amount, new_sol_reserves, new_token_reserves))
     }
 }
