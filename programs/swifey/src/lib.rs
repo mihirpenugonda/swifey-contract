@@ -9,7 +9,7 @@ pub mod utils;
 use crate::instructions::*;
 use crate::states::*;
 
-declare_id!("EBQAXhr4mL1toiVA695mLaeXvHg4wLnnKJWmvQbMzjkz");
+declare_id!("79UdtbaGWUkLePZGMmkG6RDAxXKExEhkxDLmmjBxxq1g");
 
 #[program]
 pub mod swifey {
@@ -38,5 +38,31 @@ pub mod swifey {
 
     pub fn migrate(ctx: Context<Migrate>) -> Result<()> {
         Migrate::process(ctx)
+    }
+    
+    pub fn create_escrow(
+        ctx: Context<CreateEscrow>,
+        amount: u64,
+        expires_at: Option<i64>,
+    ) -> Result<()> {
+        instructions::create_escrow(ctx, amount, expires_at)
+    }
+    
+    pub fn close_escrow(
+        ctx: Context<CloseEscrow>,
+        distribution_percentages: Vec<Distribution>,
+    ) -> Result<()> {
+        instructions::close_escrow(ctx, distribution_percentages)
+    }
+    
+    pub fn close_escrow_multi<'a, 'b, 'c: 'info, 'info>(
+        ctx: Context<'a, 'b, 'c, 'info, CloseEscrowMulti<'info>>,
+        distribution_percentages: Vec<Distribution>,
+    ) -> Result<()> {
+        instructions::close_escrow_multi(ctx, distribution_percentages)
+    }
+    
+    pub fn get_user_escrows(ctx: Context<GetUserEscrows>) -> Result<()> {
+        instructions::get_user_escrows(ctx)
     }
 }

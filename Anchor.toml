@@ -5,16 +5,16 @@ seeds = false
 skip-lint = false
 
 [programs.devnet]
-swifey = "FWyJedeiqLC9PYA9dFFKAAAwvb48JurtN4W6b8Akayyh"
+swifey = "79UdtbaGWUkLePZGMmkG6RDAxXKExEhkxDLmmjBxxq1g"
 
 [programs.mainnet]
-swifey = "EBQAXhr4mL1toiVA695mLaeXvHg4wLnnKJWmvQbMzjkz"
+swifey = "79UdtbaGWUkLePZGMmkG6RDAxXKExEhkxDLmmjBxxq1g"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "localnet"
+cluster = "Localnet"
 wallet = "./id.json"
 
 [scripts]

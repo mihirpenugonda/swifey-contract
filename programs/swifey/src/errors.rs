@@ -88,4 +88,25 @@ pub enum SwifeyError {
 
     #[msg("User has insufficient SOL balance for this transaction")]
     InsufficientUserBalance,
+    
+    #[msg("Escrow is already closed")]
+    EscrowAlreadyClosed,
+    
+    #[msg("Only the escrow initiator can close the escrow")]
+    UnauthorizedEscrowClose,
+    
+    #[msg("Escrow has expired")]
+    EscrowExpired,
+    
+    #[msg("Invalid distribution amounts - must sum to escrow amount")]
+    InvalidDistributionAmounts,
+    
+    #[msg("Invalid distribution recipient")]
+    InvalidDistributionRecipient,
+    
+    #[msg("Too many escrows for this user")]
+    TooManyEscrows,
+    
+    #[msg("Invalid escrow registry")]
+    InvalidEscrowRegistry,
 }
